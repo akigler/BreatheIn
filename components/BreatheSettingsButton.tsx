@@ -154,7 +154,11 @@ export const BreatheSettingsButton: React.FC = () => {
         animationType="slide"
         onRequestClose={() => setShowTimePicker(false)}
       >
-        <View style={styles.modalOverlay}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowTimePicker(false)}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Set Active Time Window</Text>
 
@@ -193,11 +197,18 @@ export const BreatheSettingsButton: React.FC = () => {
                 style={styles.modalSaveButton}
                 onPress={handleTimeSave}
               >
-                <Text style={styles.modalSaveText}>Save</Text>
+                <LinearGradient
+                  colors={['#A8E6CF', '#D4EDF7']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.modalSaveButtonGradient}
+                >
+                  <Text style={styles.modalSaveText}>Save</Text>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -354,10 +365,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   modalSaveButton: {
-    backgroundColor: '#00FFB8',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  modalSaveButtonGradient: {
     paddingVertical: 12,
     paddingHorizontal: 24,
-    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalSaveText: {
     color: '#000',

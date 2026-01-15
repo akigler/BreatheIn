@@ -35,7 +35,7 @@ export default function TabsLayout() {
                 width: size,
                 height: size,
                 borderRadius: size / 2,
-                backgroundColor: '#FFFFFF',
+                backgroundColor: focused ? '#FFFFFF' : 'rgba(255, 255, 255, 0.3)',
               }}
             />
           ),

@@ -9,11 +9,25 @@ import {
   Alert,
   Modal,
   TextInput,
+  Platform,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useBreatheSettingsStore } from '../store/breatheSettingsStore';
 import { BreatheList, TimeWindow } from '../types/breatheSettings';
+import { appInterceptionService } from '../services/appInterceptionService';
+
+// Safely import the native module function
+let getAppInterceptorModule: (() => any) | null = null;
+try {
+  const appInterceptorModule = require('../native-modules/AppInterceptor');
+  getAppInterceptorModule = appInterceptorModule.getAppInterceptorModule;
+} catch (error) {
+  console.warn('Failed to load AppInterceptor module:', error);
+  getAppInterceptorModule = () => null;
+}
 
 export default function BreatheSettingsScreen() {
   const router = useRouter();
@@ -44,7 +58,202 @@ export default function BreatheSettingsScreen() {
   }, []);
 
   const handleToggle = async () => {
-    await toggle();
+    const newValue = !isEnabled;
+    
+    // If enabling, check and request permissions first
+    if (newValue) {
+      try {
+        if (!getAppInterceptorModule) {
+          // Show settings alert and allow toggle anyway
+          if (Platform.OS === 'ios') {
+            Alert.alert(
+              'Screen Time Permission Required',
+              'To enable breathe interception, you need to grant Screen Time permissions. Please go to Settings > Screen Time and enable permissions for this app.',
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => {} },
+                {
+                  text: 'Open Settings',
+                  onPress: async () => {
+                    await Linking.openSettings();
+                    // Enable toggle after opening settings
+                    await toggle();
+                  },
+                },
+              ]
+            );
+          } else {
+            Alert.alert(
+              'Accessibility Permission Required',
+              'To enable breathe interception, you need to enable Accessibility Service. Please go to Settings > Accessibility and enable this app.',
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => {} },
+                {
+                  text: 'Open Settings',
+                  onPress: async () => {
+                    await Linking.openSettings();
+                    // Enable toggle after opening settings
+                    await toggle();
+                  },
+                },
+              ]
+            );
+          }
+          return;
+        }
+
+        const nativeModule = getAppInterceptorModule();
+        
+        if (!nativeModule) {
+          // Show settings alert and allow toggle anyway
+          if (Platform.OS === 'ios') {
+            Alert.alert(
+              'Screen Time Permission Required',
+              'To enable breathe interception, you need to grant Screen Time permissions. Please go to Settings > Screen Time and enable permissions for this app.',
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => {} },
+                {
+                  text: 'Open Settings',
+                  onPress: async () => {
+                    await Linking.openSettings();
+                    // Enable toggle after opening settings
+                    await toggle();
+                  },
+                },
+              ]
+            );
+          } else {
+            Alert.alert(
+              'Accessibility Permission Required',
+              'To enable breathe interception, you need to enable Accessibility Service. Please go to Settings > Accessibility and enable this app.',
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => {} },
+                {
+                  text: 'Open Settings',
+                  onPress: async () => {
+                    await Linking.openSettings();
+                    // Enable toggle after opening settings
+                    await toggle();
+                  },
+                },
+              ]
+            );
+          }
+          return;
+        }
+
+        // Try to check permissions (may fail with placeholder modules)
+        let hasPermissions = false;
+        try {
+          hasPermissions = await nativeModule.hasPermissions();
+        } catch (error) {
+          console.warn('Could not check permissions (placeholder module):', error);
+        }
+        
+        if (!hasPermissions) {
+          // Try to request permissions (will likely fail with placeholder)
+          let granted = false;
+          try {
+            granted = await nativeModule.requestPermissions();
+          } catch (error) {
+            console.warn('Could not request permissions (placeholder module):', error);
+          }
+          
+          if (!granted) {
+            // Show settings alert - user needs to enable in system settings
+            if (Platform.OS === 'ios') {
+              Alert.alert(
+                'Screen Time Permission Required',
+                'To enable breathe interception, you need to grant Screen Time permissions. Please go to Settings > Screen Time and enable permissions for this app.',
+                [
+                  { text: 'Cancel', style: 'cancel', onPress: () => {} },
+                  {
+                    text: 'Open Settings',
+                    onPress: async () => {
+                      await Linking.openSettings();
+                      // Enable toggle after opening settings
+                      try {
+                        await nativeModule.initialize();
+                        await appInterceptionService.startMonitoring();
+                        await toggle();
+                      } catch (error) {
+                        console.error('Error initializing after settings:', error);
+                        // Still enable toggle
+                        await toggle();
+                      }
+                    },
+                  },
+                ]
+              );
+            } else {
+              Alert.alert(
+                'Accessibility Permission Required',
+                'To enable breathe interception, you need to enable Accessibility Service. Please go to Settings > Accessibility and enable this app.',
+                [
+                  { text: 'Cancel', style: 'cancel', onPress: () => {} },
+                  {
+                    text: 'Open Settings',
+                    onPress: async () => {
+                      await Linking.openSettings();
+                      // Enable toggle after opening settings
+                      try {
+                        await nativeModule.initialize();
+                        await appInterceptionService.startMonitoring();
+                        await toggle();
+                      } catch (error) {
+                        console.error('Error initializing after settings:', error);
+                        // Still enable toggle
+                        await toggle();
+                      }
+                    },
+                  },
+                ]
+              );
+            }
+            return;
+          }
+        }
+
+        // Permissions granted, initialize and start monitoring
+        try {
+          await nativeModule.initialize();
+          await appInterceptionService.startMonitoring();
+        } catch (error) {
+          console.warn('Error initializing monitoring (may be placeholder):', error);
+        }
+        
+        // Enable the toggle
+        await toggle();
+      } catch (error) {
+        console.error('Error enabling breathe interception:', error);
+        // Still allow toggle to be enabled - user can configure permissions manually
+        Alert.alert(
+          'Permission Setup Required',
+          Platform.OS === 'ios'
+            ? 'Please enable Screen Time permissions in Settings > Screen Time, then try again.'
+            : 'Please enable Accessibility Service in Settings > Accessibility, then try again.',
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => {} },
+            {
+              text: 'Open Settings',
+              onPress: async () => {
+                await Linking.openSettings();
+                await toggle();
+              },
+            },
+          ]
+        );
+      }
+    } else {
+      // Disabling - just stop monitoring and toggle
+      try {
+        await appInterceptionService.stopMonitoring();
+        await toggle();
+      } catch (error) {
+        console.error('Error disabling breathe interception:', error);
+        // Still toggle off even if there's an error stopping
+        await toggle();
+      }
+    }
   };
 
   const handleAddTimeWindow = () => {
@@ -155,7 +364,13 @@ export default function BreatheSettingsScreen() {
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)');
+            }
+          }} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.title}>Breathe Settings</Text>
@@ -340,7 +555,11 @@ export default function BreatheSettingsScreen() {
         animationType="slide"
         onRequestClose={() => setShowTimePicker(false)}
       >
-        <View style={styles.modalOverlay}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowTimePicker(false)}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               {editingTimeWindow ? 'Edit Time Window' : 'Add Time Window'}
@@ -381,11 +600,18 @@ export default function BreatheSettingsScreen() {
                 style={styles.modalSaveButton}
                 onPress={handleSaveTimeWindow}
               >
-                <Text style={styles.modalSaveText}>Save</Text>
+                <LinearGradient
+                  colors={['#A8E6CF', '#D4EDF7']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.modalSaveButtonGradient}
+                >
+                  <Text style={styles.modalSaveText}>Save</Text>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* Create List Modal */}
@@ -395,7 +621,14 @@ export default function BreatheSettingsScreen() {
         animationType="slide"
         onRequestClose={() => setShowCreateList(false)}
       >
-        <View style={styles.modalOverlay}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => {
+            setShowCreateList(false);
+            setNewListName('');
+          }}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Create New Breathe List</Text>
             <TextInput
@@ -420,11 +653,18 @@ export default function BreatheSettingsScreen() {
                 style={styles.modalSaveButton}
                 onPress={handleCreateList}
               >
-                <Text style={styles.modalSaveText}>Create</Text>
+                <LinearGradient
+                  colors={['#A8E6CF', '#D4EDF7']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.modalSaveButtonGradient}
+                >
+                  <Text style={styles.modalSaveText}>Create</Text>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -724,10 +964,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   modalSaveButton: {
-    backgroundColor: '#00FFB8',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  modalSaveButtonGradient: {
     paddingVertical: 12,
     paddingHorizontal: 24,
-    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalSaveText: {
     color: '#000',

@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useBreatheSettingsStore } from '../../store/breatheSettingsStore';
 import { AppInfo } from '../../types/breatheSettings';
 import { appInterceptionService } from '../../services/appInterceptionService';
@@ -110,7 +111,11 @@ export default function BreatheListEditorScreen() {
           style: 'destructive',
           onPress: async () => {
             await useBreatheSettingsStore.getState().removeBreatheList(id);
-            router.back();
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)');
+            }
           },
         },
       ]
@@ -133,7 +138,13 @@ export default function BreatheListEditorScreen() {
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)');
+            }
+          }} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
           <View style={styles.titleContainer}>
@@ -305,7 +316,14 @@ export default function BreatheListEditorScreen() {
                 style={styles.modalSaveButton}
                 onPress={handleSaveApps}
               >
-                <Text style={styles.modalSaveText}>Save</Text>
+                <LinearGradient
+                  colors={['#A8E6CF', '#D4EDF7']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.modalSaveButtonGradient}
+                >
+                  <Text style={styles.modalSaveText}>Save</Text>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           </View>
@@ -586,10 +604,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   modalSaveButton: {
-    backgroundColor: '#00FFB8',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  modalSaveButtonGradient: {
     paddingVertical: 12,
     paddingHorizontal: 24,
-    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalSaveText: {
     color: '#000',

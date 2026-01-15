@@ -64,24 +64,37 @@ export interface AppInterceptorModule {
 let nativeModule: AppInterceptorModule | null = null;
 
 // Try to load platform-specific implementation
-if (Platform.OS === 'ios') {
-  try {
-    // In production, this would be:
-    // nativeModule = require('./AppInterceptor.ios').default;
-    // For now, we'll use a placeholder
-    nativeModule = null;
-  } catch (error) {
-    console.warn('iOS AppInterceptor native module not available');
+try {
+  if (Platform.OS === 'ios') {
+    try {
+      // Load the iOS implementation (currently a placeholder)
+      // When native modules are implemented, this will be the actual native module
+      const iOSModule = require('./AppInterceptor.ios').default;
+      if (iOSModule) {
+        nativeModule = iOSModule;
+        console.log('Loaded iOS AppInterceptor module (placeholder)');
+      }
+    } catch (error) {
+      console.warn('iOS AppInterceptor native module not available:', error);
+      nativeModule = null;
+    }
+  } else if (Platform.OS === 'android') {
+    try {
+      // Load the Android implementation (currently a placeholder)
+      // When native modules are implemented, this will be the actual native module
+      const androidModule = require('./AppInterceptor.android').default;
+      if (androidModule) {
+        nativeModule = androidModule;
+        console.log('Loaded Android AppInterceptor module (placeholder)');
+      }
+    } catch (error) {
+      console.warn('Android AppInterceptor native module not available:', error);
+      nativeModule = null;
+    }
   }
-} else if (Platform.OS === 'android') {
-  try {
-    // In production, this would be:
-    // nativeModule = require('./AppInterceptor.android').default;
-    // For now, we'll use a placeholder
-    nativeModule = null;
-  } catch (error) {
-    console.warn('Android AppInterceptor native module not available');
-  }
+} catch (error) {
+  console.warn('Error loading AppInterceptor module:', error);
+  nativeModule = null;
 }
 
 /**

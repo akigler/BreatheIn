@@ -119,11 +119,19 @@ export default function ChooseAppsScreen() {
   const handleSave = async () => {
     const appsToSave = installedApps.filter(app => selectedAppIds.has(app.id));
     await setSelectedApps(appsToSave);
-    router.back();
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)');
+    }
   };
 
   const handleCancel = () => {
-    router.back();
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)');
+    }
   };
 
   const getCategoryApps = (categoryId: string) => {

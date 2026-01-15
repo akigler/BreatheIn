@@ -417,7 +417,15 @@ export default function FriendsScreen() {
         transparent={true}
         onRequestClose={() => setShowCreateGroup(false)}
       >
-        <View style={styles.modalOverlay}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => {
+            setShowCreateGroup(false);
+            setNewGroupName('');
+            setSelectedContacts(new Set());
+          }}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Create Group</Text>
             
@@ -469,7 +477,7 @@ export default function FriendsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
     </View>
   );

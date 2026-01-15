@@ -64,6 +64,11 @@ export const AppInterceptorIOS: AppInterceptorModule = {
   hasPermissions: async (): Promise<boolean> => {
     console.log('[iOS] AppInterceptor.hasPermissions() - Placeholder');
     // TODO: Check FamilyControls authorization status
+    // For now, return false to trigger permission request
+    // In production, this should check:
+    // import FamilyControls
+    // let authorizationCenter = AuthorizationCenter.shared
+    // return authorizationCenter.authorizationStatus == .approved
     return false;
   },
 
@@ -71,6 +76,17 @@ export const AppInterceptorIOS: AppInterceptorModule = {
     console.log('[iOS] AppInterceptor.requestPermissions() - Placeholder');
     // TODO: Request FamilyControls authorization
     // This will show system permission dialog
+    // In production, this should:
+    // import FamilyControls
+    // let authorizationCenter = AuthorizationCenter.shared
+    // do {
+    //   try await authorizationCenter.requestAuthorization(for: .individual)
+    //   return true
+    // } catch {
+    //   return false
+    // }
+    // For now, return false to indicate permission was not granted
+    // The UI will handle showing the user they need to go to Settings
     return false;
   },
 };

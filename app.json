@@ -17,7 +17,11 @@
       "bundleIdentifier": "com.breathein.app",
       "infoPlist": {
         "UIBackgroundModes": ["remote-notification"],
-        "NSContactsUsageDescription": "Breathe In needs access to your contacts to help you find and invite friends."
+        "NSContactsUsageDescription": "Breathe In needs access to your contacts to help you find and invite friends.",
+        "NSFamilyControlsUsageDescription": "Breathe In uses Screen Time to help you pause and breathe before opening distracting apps."
+      },
+      "entitlements": {
+        "com.apple.developer.family-controls": true
       }
     },
     "android": {

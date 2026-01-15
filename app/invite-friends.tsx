@@ -139,7 +139,13 @@ export default function InviteFriendsScreen() {
     <LinearGradient colors={['#0a0a0f', '#0d1b2a', '#1a1a2e', '#16213e']} style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)');
+            }
+          }} style={styles.backButton}>
             <Text style={styles.backButtonText}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Add Friends</Text>

@@ -67,6 +67,10 @@ export const AppInterceptorAndroid: AppInterceptorModule = {
     console.log('[Android] AppInterceptor.hasPermissions() - Placeholder');
     // TODO: Check if Accessibility Service is enabled
     // TODO: Check if UsageStats permission is granted
+    // In production, this should check:
+    // Settings.Secure.getInt(contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED) == 1
+    // And check if our service is in the list of enabled services
+    // For now, return false to trigger permission request
     return false;
   },
 
@@ -74,7 +78,13 @@ export const AppInterceptorAndroid: AppInterceptorModule = {
     console.log('[Android] AppInterceptor.requestPermissions() - Placeholder');
     // TODO: Request Accessibility Service permission
     // TODO: Request UsageStats permission
-    // This will navigate user to system settings
+    // In production, this should:
+    // 1. Request UsageStats permission via ActivityCompat.requestPermissions
+    // 2. Open Accessibility Settings to enable the service
+    // Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+    // context.startActivity(intent)
+    // For now, return false to indicate permission was not granted
+    // The UI will handle showing the user they need to go to Settings
     return false;
   },
 };

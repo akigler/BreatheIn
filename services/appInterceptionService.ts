@@ -1,26 +1,19 @@
 import { useBreatheSettingsStore } from '../store/breatheSettingsStore';
 import { AppInfo, TimeWindow } from '../types/breatheSettings';
 
-// This will be implemented by the native module
-// For now, we'll create a mock interface
-interface AppInterceptorModule {
-  initialize: () => Promise<void>;
-  startMonitoring: () => Promise<void>;
-  stopMonitoring: () => Promise<void>;
-  onAppLaunch: (callback: (appId: string) => void) => void;
-  getInstalledApps: () => Promise<AppInfo[]>;
-}
+// Safely import the native module functions
+let getAppInterceptorModule: (() => any) | null = null;
+let isNativeModuleAvailable: (() => boolean) | null = null;
 
-// Mock implementation until native module is ready
-let mockNativeModule: AppInterceptorModule | null = null;
-
-// Try to load native module (will be null if not available)
 try {
-  // In production, this would be: require('./AppInterceptor').default
-  // For now, we'll use a mock
-  mockNativeModule = null;
+  const appInterceptorModule = require('../native-modules/AppInterceptor');
+  getAppInterceptorModule = appInterceptorModule.getAppInterceptorModule;
+  isNativeModuleAvailable = appInterceptorModule.isNativeModuleAvailable;
 } catch (error) {
-  console.log('Native AppInterceptor module not available, using mock');
+  console.warn('Failed to load AppInterceptor module:', error);
+  // Provide fallback functions
+  getAppInterceptorModule = () => null;
+  isNativeModuleAvailable = () => false;
 }
 
 class AppInterceptionService {
@@ -39,13 +32,24 @@ class AppInterceptionService {
     }
 
     try {
-      if (mockNativeModule) {
-        await mockNativeModule.initialize();
+      if (!getAppInterceptorModule) {
+        console.warn('getAppInterceptorModule function not available');
+        this.isInitialized = true;
+        return;
+      }
+
+      const nativeModule = getAppInterceptorModule();
+      if (nativeModule) {
+        await nativeModule.initialize();
+      } else {
+        console.warn('Native AppInterceptor module not available');
       }
       this.isInitialized = true;
       console.log('App interception service initialized');
     } catch (error) {
       console.error('Error initializing app interception service:', error);
+      // Don't throw - allow service to continue without native module
+      this.isInitialized = true;
     }
   }
 
@@ -64,21 +68,34 @@ class AppInterceptionService {
     }
 
     try {
-      if (mockNativeModule) {
-        await mockNativeModule.startMonitoring();
-        mockNativeModule.onAppLaunch((appId: string) => {
+      if (!getAppInterceptorModule) {
+        console.warn('getAppInterceptorModule function not available');
+        return;
+      }
+
+      const nativeModule = getAppInterceptorModule();
+      
+      // Check permissions before starting
+      if (nativeModule) {
+        const hasPermissions = await nativeModule.hasPermissions();
+        if (!hasPermissions) {
+          throw new Error('Permissions not granted. Please grant necessary permissions first.');
+        }
+        
+        await nativeModule.startMonitoring();
+        nativeModule.onAppLaunch((appId: string) => {
           this.handleAppLaunch(appId);
         });
       } else {
-        // Mock: Simulate app launches for testing
-        // In production, this would come from the native module
-        console.log('Using mock app interception (native module not available)');
+        console.warn('Native AppInterceptor module not available - monitoring will not work');
+        throw new Error('Native module not available');
       }
 
       this.isMonitoring = true;
       console.log('App interception monitoring started');
     } catch (error) {
       console.error('Error starting app interception monitoring:', error);
+      throw error;
     }
   }
 
@@ -91,13 +108,18 @@ class AppInterceptionService {
     }
 
     try {
-      if (mockNativeModule) {
-        await mockNativeModule.stopMonitoring();
+      if (getAppInterceptorModule) {
+        const nativeModule = getAppInterceptorModule();
+        if (nativeModule) {
+          await nativeModule.stopMonitoring();
+        }
       }
       this.isMonitoring = false;
       console.log('App interception monitoring stopped');
     } catch (error) {
       console.error('Error stopping app interception monitoring:', error);
+      // Still set monitoring to false even if there's an error
+      this.isMonitoring = false;
     }
   }
 
@@ -248,10 +270,14 @@ class AppInterceptionService {
    */
   async getInstalledApps(): Promise<AppInfo[]> {
     try {
-      if (mockNativeModule) {
-        return await mockNativeModule.getInstalledApps();
+      if (getAppInterceptorModule) {
+        const nativeModule = getAppInterceptorModule();
+        if (nativeModule) {
+          return await nativeModule.getInstalledApps();
+        }
       }
-      // Return mock apps for now
+      // Return mock apps for now if native module not available
+      console.warn('Native module not available, returning mock apps');
       return [
         { id: 'com.twitter', name: 'X (Twitter)', category: 'social' },
         { id: 'com.reddit', name: 'Reddit', category: 'social' },
@@ -270,6 +296,44 @@ class AppInterceptionService {
     } catch (error) {
       console.error('Error getting installed apps:', error);
       return [];
+    }
+  }
+
+  /**
+   * Check if permissions are granted
+   */
+  async hasPermissions(): Promise<boolean> {
+    try {
+      if (!getAppInterceptorModule) {
+        return false;
+      }
+      const nativeModule = getAppInterceptorModule();
+      if (nativeModule) {
+        return await nativeModule.hasPermissions();
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking permissions:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Request necessary permissions
+   */
+  async requestPermissions(): Promise<boolean> {
+    try {
+      if (!getAppInterceptorModule) {
+        return false;
+      }
+      const nativeModule = getAppInterceptorModule();
+      if (nativeModule) {
+        return await nativeModule.requestPermissions();
+      }
+      return false;
+    } catch (error) {
+      console.error('Error requesting permissions:', error);
+      return false;
     }
   }
 
