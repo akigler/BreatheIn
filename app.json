@@ -37,6 +37,5 @@
     "plugins": [
       "expo-router"
     ],
-    "scheme": "breathein"
   }
 }

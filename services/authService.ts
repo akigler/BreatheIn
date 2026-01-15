@@ -9,7 +9,7 @@ import {
   RecaptchaVerifier
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { auth, db } from './firebaseConfig';
+import { auth, db, firebaseInitialized } from './firebaseConfig';
 import { User, UserStatus } from '../types';
 import * as Notifications from 'expo-notifications';
 
@@ -19,6 +19,10 @@ let currentUser: User | null = null;
  * Initialize anonymous authentication
  */
 export const initializeAuth = async (): Promise<User> => {
+  if (!firebaseInitialized || !auth || !db) {
+    throw new Error('Firebase is not initialized. Please check your Firebase configuration.');
+  }
+  
   return new Promise((resolve, reject) => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       unsubscribe();

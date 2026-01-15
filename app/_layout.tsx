@@ -18,17 +18,42 @@ export default function RootLayout() {
     // Initialize app-wide services
     const initApp = async () => {
       try {
-        // Request notification permissions
-        await requestNotificationPermissions();
+        console.log('Starting app initialization...');
         
-        // Initialize notifications
-        initializeNotifications();
+        // Request notification permissions (non-blocking)
+        try {
+          await requestNotificationPermissions();
+          initializeNotifications();
+        } catch (error) {
+          console.warn('Notification initialization failed (non-critical):', error);
+        }
         
-        // Initialize authentication
-        await initializeAuth();
+        // Initialize authentication (with error handling)
+        try {
+          await initializeAuth();
+          console.log('Auth initialized successfully');
+        } catch (error: any) {
+          console.error('Auth initialization failed:', error);
+          // Don't block app startup - continue without auth
+          if (error?.name === 'FirebaseConfigurationError' || error?.code === 'auth/configuration-not-found') {
+            console.warn(
+              '⚠️  FIREBASE SETUP REQUIRED:\n' +
+              'Please enable Anonymous Authentication in Firebase Console:\n' +
+              '1. Go to https://console.firebase.google.com/\n' +
+              '2. Select your project\n' +
+              '3. Go to Authentication → Sign-in method\n' +
+              '4. Enable "Anonymous" authentication'
+            );
+          }
+        }
 
-        // Initialize app interception service
-        await appInterceptionService.initialize();
+        // Initialize app interception service (non-blocking)
+        try {
+          await appInterceptionService.initialize();
+          console.log('App interception service initialized');
+        } catch (error) {
+          console.warn('App interception initialization failed (non-critical):', error);
+        }
 
         // Set up overlay callbacks
         appInterceptionService.setOnShowOverlay((appInfo: AppInfo) => {
@@ -40,21 +65,11 @@ export default function RootLayout() {
           setOverlayVisible(false);
           setOverlayApp(null);
         });
-      } catch (error: any) {
-        console.error('Error initializing app:', error);
         
-        // Show user-friendly error for Firebase configuration issues
-        if (error?.name === 'FirebaseConfigurationError' || error?.code === 'auth/configuration-not-found') {
-          console.error(
-            '\n⚠️  FIREBASE SETUP REQUIRED:\n' +
-            'Please enable Anonymous Authentication in Firebase Console:\n' +
-            '1. Go to https://console.firebase.google.com/\n' +
-            '2. Select your project (breathein-e1423)\n' +
-            '3. Go to Authentication → Sign-in method\n' +
-            '4. Enable "Anonymous" authentication\n\n' +
-            'Original error:', error.message
-          );
-        }
+        console.log('App initialization complete');
+      } catch (error: any) {
+        console.error('Critical error during app initialization:', error);
+        // App should still render even if initialization fails
       }
     };
 

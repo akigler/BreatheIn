@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import * as Contacts from 'expo-contacts';
 import { invitationService } from '../services/invitationService';
@@ -28,8 +29,15 @@ export default function InviteFriendsScreen() {
 
   useEffect(() => {
     if (!isLoggedIn()) {
-      Alert.alert('Login Required', 'Please login to add friends');
-      router.back();
+      Alert.alert('Login Required', 'Please login to add friends', [
+        {
+          text: 'OK',
+          onPress: () => {
+            // Navigate to home screen instead of going back
+            router.replace('/(tabs)');
+          },
+        },
+      ]);
       return;
     }
     loadContacts();
@@ -52,7 +60,13 @@ export default function InviteFriendsScreen() {
           'Permission Required',
           'Please grant contacts permission to find friends',
           [
-            { text: 'Cancel', onPress: () => router.back() },
+            {
+              text: 'Cancel',
+              onPress: () => {
+                // Navigate to home screen instead of going back
+                router.replace('/(tabs)');
+              },
+            },
             { text: 'Settings', onPress: () => {} }, // Could open settings
           ]
         );
