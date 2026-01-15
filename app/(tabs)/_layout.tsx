@@ -17,7 +17,7 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
-        name="choose-apps"
+        name="app-settings"
         options={{
           title: 'App',
           tabBarIcon: ({ color, size }) => (

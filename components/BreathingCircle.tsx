@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BREATHING_DURATIONS, BREATHING_SCALE, BREATHING_OPACITY } from '../utils/constants';
+import { BREATHING_DURATIONS, BREATHING_SCALE } from '../utils/constants';
 
 interface BreathingCircleProps {
   isActive?: boolean;
 }
 
-type BreathingPhase = 'inhale' | 'hold' | 'exhale';
+type BreathingPhase = 'inhale' | 'holdAfterInhale' | 'exhale' | 'holdAfterExhale';
 
 // Opal-like color palettes that shift during breathing
 const OPAL_COLORS = {
@@ -32,9 +32,8 @@ const OPAL_COLORS = {
 };
 
 export const BreathingCircle: React.FC<BreathingCircleProps> = ({ isActive = true }) => {
-  // Start at minimum scale/opacity (inhale starting position)
+  // Start at minimum scale (inhale starting position)
   const scale = useRef(new Animated.Value(BREATHING_SCALE.MIN)).current;
-  const opacity = useRef(new Animated.Value(BREATHING_OPACITY.MIN)).current;
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
   const animationStartTime = useRef<number | null>(null);
   const [currentColors, setCurrentColors] = useState<string[]>(OPAL_COLORS.inhale);
@@ -47,52 +46,40 @@ export const BreathingCircle: React.FC<BreathingCircleProps> = ({ isActive = tru
     }
 
     if (!isActive) {
-      Animated.parallel([
-        Animated.timing(scale, {
-          toValue: BREATHING_SCALE.MIN,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: BREATHING_OPACITY.MIN,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      Animated.timing(scale, {
+        toValue: BREATHING_SCALE.MIN,
+        duration: 500,
+        useNativeDriver: true,
+      }).start();
       return;
     }
 
     // Create the breathing cycle animation using React Native's Animated API
+    // Using symmetric easing curves to ensure seamless loop transitions
+    // The exhale easing should be the reverse of inhale to ensure perfect matching at start/end
+    const inhaleEasing = Easing.bezier(0.42, 0, 0.58, 1); // Standard ease-in-out
+    const exhaleEasing = Easing.bezier(0.42, 0, 0.58, 1); // Same easing for perfect symmetry and fluidity
+    
     const createBreathingCycle = () => {
       return Animated.sequence([
-        // Inhale: scale up and increase opacity
-        Animated.parallel([
-          Animated.timing(scale, {
-            toValue: BREATHING_SCALE.MAX,
-            duration: BREATHING_DURATIONS.INHALE,
-            useNativeDriver: true,
-          }),
-          Animated.timing(opacity, {
-            toValue: BREATHING_OPACITY.MAX,
-            duration: BREATHING_DURATIONS.INHALE,
-            useNativeDriver: true,
-          }),
-        ]),
-        // Hold: maintain scale
-        Animated.delay(BREATHING_DURATIONS.HOLD),
-        // Exhale: scale down and decrease opacity
-        Animated.parallel([
-          Animated.timing(scale, {
-            toValue: BREATHING_SCALE.MIN,
-            duration: BREATHING_DURATIONS.EXHALE,
-            useNativeDriver: true,
-          }),
-          Animated.timing(opacity, {
-            toValue: BREATHING_OPACITY.MIN,
-            duration: BREATHING_DURATIONS.EXHALE,
-            useNativeDriver: true,
-          }),
-        ]),
+        // Inhale: scale up
+        Animated.timing(scale, {
+          toValue: BREATHING_SCALE.MAX,
+          duration: BREATHING_DURATIONS.INHALE,
+          easing: inhaleEasing,
+          useNativeDriver: true,
+        }),
+        // Hold at max size: maintain scale for 1 second
+        Animated.delay(BREATHING_DURATIONS.HOLD_AFTER_INHALE),
+        // Exhale: scale down
+        Animated.timing(scale, {
+          toValue: BREATHING_SCALE.MIN,
+          duration: BREATHING_DURATIONS.EXHALE,
+          easing: exhaleEasing,
+          useNativeDriver: true,
+        }),
+        // Hold at min size: maintain scale for 1 second (at MIN, ready to restart)
+        Animated.delay(BREATHING_DURATIONS.HOLD_AFTER_EXHALE),
       ]);
     };
 
@@ -104,7 +91,7 @@ export const BreathingCircle: React.FC<BreathingCircleProps> = ({ isActive = tru
     const loop = Animated.loop(cycle);
     animationRef.current = loop;
     loop.start();
-  }, [isActive, scale, opacity]);
+  }, [isActive, scale]);
 
   // Determine current phase text based on animation progress
   const [phaseText, setPhaseText] = React.useState<BreathingPhase>('inhale');
@@ -132,12 +119,15 @@ export const BreathingCircle: React.FC<BreathingCircleProps> = ({ isActive = tru
       if (cycleTime < BREATHING_DURATIONS.INHALE) {
         setPhaseText('inhale');
         setCurrentColors(OPAL_COLORS.inhale);
-      } else if (cycleTime < BREATHING_DURATIONS.INHALE + BREATHING_DURATIONS.HOLD) {
-        setPhaseText('hold');
+      } else if (cycleTime < BREATHING_DURATIONS.INHALE + BREATHING_DURATIONS.HOLD_AFTER_INHALE) {
+        setPhaseText('holdAfterInhale');
         setCurrentColors(OPAL_COLORS.hold);
-      } else {
+      } else if (cycleTime < BREATHING_DURATIONS.INHALE + BREATHING_DURATIONS.HOLD_AFTER_INHALE + BREATHING_DURATIONS.EXHALE) {
         setPhaseText('exhale');
         setCurrentColors(OPAL_COLORS.exhale);
+      } else {
+        setPhaseText('holdAfterExhale');
+        setCurrentColors(OPAL_COLORS.hold);
       }
     }, 100);
 
@@ -148,26 +138,28 @@ export const BreathingCircle: React.FC<BreathingCircleProps> = ({ isActive = tru
     switch (phaseText) {
       case 'inhale':
         return 'Breathe In';
-      case 'hold':
-        return 'Hold';
+      case 'holdAfterInhale':
+        return 'Breathe In'; // Keep showing "Breathe In" during hold at max
       case 'exhale':
         return 'Breathe Out';
+      case 'holdAfterExhale':
+        return 'Breathe Out'; // Keep showing "Breathe Out" during hold at min
       default:
         return 'Breathe In';
     }
   };
 
+  // Scale animation for all circles
   const animatedStyle = {
     transform: [{ scale }],
-    opacity,
   };
 
   return (
     <View style={styles.container}>
-      {/* Outer glow effect */}
+      {/* Outer glow effect - only scales, no opacity */}
       <Animated.View style={[styles.glow, animatedStyle]} />
       
-      {/* Main opal circle with gradient */}
+      {/* Main opal circle with gradient - only scales */}
       <Animated.View style={[styles.circle, animatedStyle]}>
         <LinearGradient
           colors={currentColors}
@@ -177,13 +169,15 @@ export const BreathingCircle: React.FC<BreathingCircleProps> = ({ isActive = tru
         >
           <View style={styles.innerCircle}>
             <LinearGradient
-              colors={['rgba(255, 255, 255, 0.3)', 'rgba(255, 255, 255, 0.1)']}
+              colors={['rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 1)']}
               style={styles.innerGradient}
             >
               <Text style={styles.phaseText}>{getPhaseText()}</Text>
             </LinearGradient>
           </View>
         </LinearGradient>
+        {/* Stroke overlay - fully opaque */}
+        <Animated.View style={styles.strokeOverlay} />
       </Animated.View>
     </View>
   );
@@ -200,7 +194,7 @@ const styles = StyleSheet.create({
     width: 240,
     height: 240,
     borderRadius: 120,
-    backgroundColor: 'rgba(0, 212, 255, 0.2)',
+    backgroundColor: 'rgba(0, 212, 255, 1)', // No opacity, fully opaque
     shadowColor: '#00D4FF',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
@@ -214,13 +208,20 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
     shadowColor: '#00FFB8',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.6,
     shadowRadius: 20,
     elevation: 15,
+  },
+  strokeOverlay: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    borderWidth: 4,
+    borderColor: 'rgba(255, 255, 255, 1)',
+    pointerEvents: 'none',
   },
   gradientCircle: {
     width: '100%',
@@ -241,6 +242,7 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
+    opacity: 1, // Fully opaque
   },
   phaseText: {
     color: 'white',

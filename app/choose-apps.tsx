@@ -5,14 +5,15 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useBreatheSettingsStore } from '../../store/breatheSettingsStore';
-import { AppInfo } from '../../types/breatheSettings';
+import { useBreatheSettingsStore } from '../store/breatheSettingsStore';
+import { AppInfo } from '../types/breatheSettings';
+import { appInterceptionService } from '../services/appInterceptionService';
 
-// Mock app categories and apps - in production, this would come from native module
+// App categories matching Opal's structure
 const APP_CATEGORIES = [
   {
     id: 'all',
@@ -52,36 +53,40 @@ const APP_CATEGORIES = [
   },
 ];
 
-// Mock apps - in production, get from native module
-const MOCK_APPS: AppInfo[] = [
-  { id: 'com.twitter', name: 'X (Twitter)', category: 'social' },
-  { id: 'com.reddit', name: 'Reddit', category: 'social' },
-  { id: 'com.instagram', name: 'Instagram', category: 'social' },
-  { id: 'com.facebook', name: 'Facebook', category: 'social' },
-  { id: 'com.linkedin', name: 'LinkedIn', category: 'social' },
-  { id: 'com.discord', name: 'Discord', category: 'social' },
-  { id: 'com.tiktok', name: 'TikTok', category: 'entertainment' },
-  { id: 'com.youtube', name: 'YouTube', category: 'entertainment' },
-  { id: 'com.netflix', name: 'Netflix', category: 'entertainment' },
-  { id: 'com.spotify', name: 'Spotify', category: 'entertainment' },
-  { id: 'com.amazon', name: 'Amazon', category: 'shopping' },
-  { id: 'com.uber', name: 'Uber', category: 'shopping' },
-  { id: 'com.doordash', name: 'DoorDash', category: 'shopping' },
-];
-
 export default function ChooseAppsScreen() {
   const router = useRouter();
   const { selectedApps, setSelectedApps } = useBreatheSettingsStore();
+  const [installedApps, setInstalledApps] = useState<AppInfo[]>([]);
   const [selectedAppIds, setSelectedAppIds] = useState<Set<string>>(
     new Set(selectedApps.map(app => app.id))
   );
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    loadInstalledApps();
     // Load selected apps from store
     setSelectedAppIds(new Set(selectedApps.map(app => app.id)));
   }, []);
+
+  const loadInstalledApps = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      // Fetch real installed apps from the phone
+      const apps = await appInterceptionService.getInstalledApps();
+      setInstalledApps(apps);
+    } catch (err) {
+      console.error('Error loading installed apps:', err);
+      setError('Failed to load apps. Please check permissions.');
+      // Fallback to empty array
+      setInstalledApps([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const toggleAppSelection = (app: AppInfo) => {
     const newSelected = new Set(selectedAppIds);
@@ -104,38 +109,28 @@ export default function ChooseAppsScreen() {
   };
 
   const handleSelectAll = () => {
-    if (selectedAppIds.size === MOCK_APPS.length) {
+    if (selectedAppIds.size === installedApps.length) {
       setSelectedAppIds(new Set());
     } else {
-      setSelectedAppIds(new Set(MOCK_APPS.map(app => app.id)));
+      setSelectedAppIds(new Set(installedApps.map(app => app.id)));
     }
   };
 
   const handleSave = async () => {
-    const appsToSave = MOCK_APPS.filter(app => selectedAppIds.has(app.id));
+    const appsToSave = installedApps.filter(app => selectedAppIds.has(app.id));
     await setSelectedApps(appsToSave);
-    // Navigate to home tab if we can go back, otherwise stay on this tab
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.push('/(tabs)/');
-    }
+    router.back();
   };
 
   const handleCancel = () => {
-    // Navigate to home tab if we can go back, otherwise stay on this tab
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.push('/(tabs)/');
-    }
+    router.back();
   };
 
   const getCategoryApps = (categoryId: string) => {
     if (categoryId === 'all') {
-      return MOCK_APPS;
+      return installedApps;
     }
-    return MOCK_APPS.filter(app => app.category === categoryId);
+    return installedApps.filter(app => app.category === categoryId);
   };
 
   const getCategoryAppCount = (categoryId: string) => {
@@ -145,9 +140,51 @@ export default function ChooseAppsScreen() {
 
   const filteredApps = filterCategory
     ? getCategoryApps(filterCategory)
-    : MOCK_APPS;
+    : installedApps;
 
   const selectedCount = selectedAppIds.size;
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={handleCancel} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.title}>Choose Activities</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#00D4FF" />
+          <Text style={styles.loadingText}>Loading apps from your phone...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={handleCancel} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.title}>Choose Activities</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle" size={48} color="#FF3B30" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={loadInstalledApps}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -249,10 +286,10 @@ export default function ChooseAppsScreen() {
               <View
                 style={[
                   styles.checkbox,
-                  selectedAppIds.size === MOCK_APPS.length && styles.checkboxSelected,
+                  selectedAppIds.size === installedApps.length && styles.checkboxSelected,
                 ]}
               >
-                {selectedAppIds.size === MOCK_APPS.length && (
+                {selectedAppIds.size === installedApps.length && (
                   <Ionicons name="checkmark" size={16} color="#fff" />
                 )}
               </View>
@@ -480,6 +517,42 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  loadingText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 16,
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  errorText: {
+    color: '#FF3B30',
+    fontSize: 16,
+    marginTop: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#00D4FF',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  retryButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',

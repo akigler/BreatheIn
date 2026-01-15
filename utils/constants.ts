@@ -1,8 +1,9 @@
 export const BREATHING_DURATIONS = {
   INHALE: 4000, // 4 seconds
-  HOLD: 2000, // 2 seconds
+  HOLD_AFTER_INHALE: 1000, // 1 second hold at max size
   EXHALE: 4000, // 4 seconds
-  TOTAL_CYCLE: 10000, // 10 seconds total
+  HOLD_AFTER_EXHALE: 1000, // 1 second hold at min size
+  TOTAL_CYCLE: 10000, // 10 seconds total (4 + 1 + 4 + 1)
 };
 
 // Session durations in seconds: 15s, 30s, 1min, 2min, ... 59min, 1hr
@@ -38,7 +39,7 @@ export const BREATHING_SCALE = {
 };
 
 export const BREATHING_OPACITY = {
-  MIN: 0.6,
+  MIN: 0.85,
   MAX: 0.9,
 };
 

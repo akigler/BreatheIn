@@ -97,6 +97,7 @@ export default function RootLayout() {
         <Stack.Screen name="session/[id]" />
         <Stack.Screen name="invite-friends" />
         <Stack.Screen name="breathe-settings" />
+        <Stack.Screen name="choose-apps" />
         <Stack.Screen name="breathe-list/[id]" />
       </Stack>
 

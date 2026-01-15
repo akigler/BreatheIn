@@ -7,28 +7,13 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useBreatheSettingsStore } from '../../store/breatheSettingsStore';
 import { AppInfo } from '../../types/breatheSettings';
-
-// Mock apps - same as choose-apps screen
-const MOCK_APPS: AppInfo[] = [
-  { id: 'com.twitter', name: 'X (Twitter)', category: 'social' },
-  { id: 'com.reddit', name: 'Reddit', category: 'social' },
-  { id: 'com.instagram', name: 'Instagram', category: 'social' },
-  { id: 'com.facebook', name: 'Facebook', category: 'social' },
-  { id: 'com.linkedin', name: 'LinkedIn', category: 'social' },
-  { id: 'com.discord', name: 'Discord', category: 'social' },
-  { id: 'com.tiktok', name: 'TikTok', category: 'entertainment' },
-  { id: 'com.youtube', name: 'YouTube', category: 'entertainment' },
-  { id: 'com.netflix', name: 'Netflix', category: 'entertainment' },
-  { id: 'com.spotify', name: 'Spotify', category: 'entertainment' },
-  { id: 'com.amazon', name: 'Amazon', category: 'shopping' },
-  { id: 'com.uber', name: 'Uber', category: 'shopping' },
-  { id: 'com.doordash', name: 'DoorDash', category: 'shopping' },
-];
+import { appInterceptionService } from '../../services/appInterceptionService';
 
 export default function BreatheListEditorScreen() {
   const router = useRouter();
@@ -43,9 +28,12 @@ export default function BreatheListEditorScreen() {
   const [isEditingName, setIsEditingName] = useState(false);
   const [selectedAppIds, setSelectedAppIds] = useState<Set<string>>(new Set());
   const [showAddApps, setShowAddApps] = useState(false);
+  const [installedApps, setInstalledApps] = useState<AppInfo[]>([]);
+  const [loadingApps, setLoadingApps] = useState(false);
 
   useEffect(() => {
     loadSettings();
+    loadInstalledApps();
   }, []);
 
   useEffect(() => {
@@ -55,6 +43,20 @@ export default function BreatheListEditorScreen() {
       setSelectedAppIds(new Set(list.apps.map(app => app.id)));
     }
   }, [id, breatheLists]);
+
+  const loadInstalledApps = async () => {
+    try {
+      setLoadingApps(true);
+      const apps = await appInterceptionService.getInstalledApps();
+      setInstalledApps(apps);
+    } catch (error) {
+      console.error('Error loading installed apps:', error);
+      // Fallback to empty array
+      setInstalledApps([]);
+    } finally {
+      setLoadingApps(false);
+    }
+  };
 
   const currentList = breatheLists.find(l => l.id === id);
 
@@ -81,7 +83,7 @@ export default function BreatheListEditorScreen() {
 
   const handleSaveApps = async () => {
     if (currentList) {
-      const selectedApps = MOCK_APPS.filter(app => selectedAppIds.has(app.id));
+      const selectedApps = installedApps.filter(app => selectedAppIds.has(app.id));
       await updateBreatheList(id, { apps: selectedApps });
       setShowAddApps(false);
     }
@@ -92,7 +94,7 @@ export default function BreatheListEditorScreen() {
     newSelected.delete(appId);
     setSelectedAppIds(newSelected);
     if (currentList) {
-      const selectedApps = MOCK_APPS.filter(app => newSelected.has(app.id));
+      const selectedApps = installedApps.filter(app => newSelected.has(app.id));
       await updateBreatheList(id, { apps: selectedApps });
     }
   };
@@ -123,8 +125,8 @@ export default function BreatheListEditorScreen() {
     );
   }
 
-  const selectedApps = MOCK_APPS.filter(app => selectedAppIds.has(app.id));
-  const availableApps = MOCK_APPS.filter(app => !selectedAppIds.has(app.id));
+  const selectedApps = installedApps.filter(app => selectedAppIds.has(app.id));
+  const availableApps = installedApps.filter(app => !selectedAppIds.has(app.id));
 
   return (
     <View style={styles.container}>
@@ -172,7 +174,7 @@ export default function BreatheListEditorScreen() {
             <Text style={styles.sectionTitle}>Apps</Text>
           </View>
           <Text style={styles.sectionSubtitle}>
-            {selectedApps.length}/{MOCK_APPS.length} apps
+            {selectedApps.length}/{installedApps.length} apps
           </Text>
           <TouchableOpacity
             style={styles.addRemoveButton}
@@ -229,8 +231,15 @@ export default function BreatheListEditorScreen() {
             </View>
 
             <ScrollView style={styles.modalScrollView}>
-              {/* Selected Apps */}
-              {selectedApps.length > 0 && (
+              {loadingApps ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#00D4FF" />
+                  <Text style={styles.loadingText}>Loading apps...</Text>
+                </View>
+              ) : (
+                <>
+                  {/* Selected Apps */}
+                  {selectedApps.length > 0 && (
                 <View style={styles.modalSection}>
                   <Text style={styles.modalSectionTitle}>Selected ({selectedApps.length})</Text>
                   {selectedApps.map((app) => (
@@ -280,6 +289,8 @@ export default function BreatheListEditorScreen() {
                     </TouchableOpacity>
                   ))}
                 </View>
+              )}
+                </>
               )}
             </ScrollView>
 
@@ -584,5 +595,15 @@ const styles = StyleSheet.create({
     color: '#000',
     fontSize: 16,
     fontWeight: '600',
+  },
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 16,
+    marginTop: 16,
   },
 });

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Animated } from 'react-native';
+import { View, StyleSheet, Animated, Easing } from 'react-native';
 
 interface OnboardingBreathingCircleProps {
   isActive?: boolean;
@@ -7,9 +7,15 @@ interface OnboardingBreathingCircleProps {
 
 // Number of circles to create the layered effect
 const NUM_CIRCLES = 15;
-const BREATH_DURATION = 5000; // 5 seconds for inhale/exhale
+const BREATH_DURATION = 6000; // 6 seconds for inhale/exhale - longer for smoother transitions
 const MIN_SCALE = 0.6;
 const MAX_SCALE = 1.4;
+// Very smooth easing curve - gradual acceleration and deceleration
+const SMOOTH_EASING = Easing.bezier(0.25, 0.1, 0.25, 1);
+// Extra smooth easing for exhale - slows down very gradually at the end for seamless loop
+const EXHALE_EASING = Easing.bezier(0.33, 0, 0.1, 1);
+// Easing for opacity during exhale - changes slowly at large sizes, faster at small sizes
+const OPACITY_EXHALE_EASING = Easing.bezier(0.4, 0, 0.6, 1);
 
 export const OnboardingBreathingCircle: React.FC<OnboardingBreathingCircleProps> = ({ 
   isActive = true 
@@ -18,81 +24,129 @@ export const OnboardingBreathingCircle: React.FC<OnboardingBreathingCircleProps>
     Array.from({ length: NUM_CIRCLES }, () => new Animated.Value(MIN_SCALE))
   ).current;
   const opacities = useRef(
-    Array.from({ length: NUM_CIRCLES }, () => new Animated.Value(0.05))
+    Array.from({ length: NUM_CIRCLES }, () => new Animated.Value(0.75))
   ).current;
+  
+  // Calculate offsets for each circle
+  const offsets = useRef(
+    Array.from({ length: NUM_CIRCLES }, (_, index) => {
+      const progress = index / NUM_CIRCLES;
+      const maxOffset = progress * 15; // Max 15px offset for outer circles
+      const angle = (index * 137.5) % 360; // Golden angle for even distribution
+      return {
+        translateX: new Animated.Value(0), // Start at center (perfect circle)
+        translateY: new Animated.Value(0), // Start at center (perfect circle)
+        maxOffsetX: Math.cos((angle * Math.PI) / 180) * maxOffset,
+        maxOffsetY: Math.sin((angle * Math.PI) / 180) * maxOffset,
+      };
+    })
+  ).current;
+  
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
     if (!isActive) {
-      // Reset to minimum
-      Animated.parallel(
-        scales.map((scale) =>
+      // Reset to minimum - all circles converge to center (perfect circle)
+      Animated.parallel([
+        ...scales.map((scale) =>
           Animated.timing(scale, {
             toValue: MIN_SCALE,
             duration: 500,
             useNativeDriver: true,
           })
-        ).concat(
-          opacities.map((opacity) =>
-            Animated.timing(opacity, {
-              toValue: 0.05,
-              duration: 500,
-              useNativeDriver: true,
-            })
-          )
-        )
-      ).start();
+        ),
+        ...opacities.map((opacity) =>
+          Animated.timing(opacity, {
+            toValue: 0.75,
+            duration: 500,
+            useNativeDriver: true,
+          })
+        ),
+        ...offsets.flatMap((offset) => [
+          Animated.timing(offset.translateX, {
+            toValue: 0,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(offset.translateY, {
+            toValue: 0,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start();
       return;
     }
 
     // Create breathing cycle - all circles expand and contract together
-    // but with different opacities based on their position
     const createBreathingCycle = () => {
       return Animated.sequence([
-        // Inhale - expand all circles
-        Animated.parallel(
-          scales.map((scale) =>
+        // Inhale - expand all circles, fade out, and spread out from center
+        Animated.parallel([
+          ...scales.map((scale) =>
             Animated.timing(scale, {
               toValue: MAX_SCALE,
               duration: BREATH_DURATION,
+              easing: SMOOTH_EASING,
               useNativeDriver: true,
             })
-          ).concat(
-            opacities.map((opacity, index) => {
-              // Inner circles (lower index) have higher opacity when bunched
-              // Outer circles (higher index) have lower opacity
-              const progress = index / NUM_CIRCLES;
-              const maxOpacity = 0.8 - (progress * 0.7); // 0.8 for center, 0.1 for outer
-              return Animated.timing(opacity, {
-                toValue: maxOpacity,
-                duration: BREATH_DURATION,
-                useNativeDriver: true,
-              });
+          ),
+          ...opacities.map((opacity) =>
+            Animated.timing(opacity, {
+              toValue: 0.2,
+              duration: BREATH_DURATION,
+              easing: SMOOTH_EASING,
+              useNativeDriver: true,
             })
-          )
-        ),
-        // Exhale - contract all circles
-        Animated.parallel(
-          scales.map((scale) =>
+          ),
+          ...offsets.flatMap((offset) => [
+            Animated.timing(offset.translateX, {
+              toValue: offset.maxOffsetX,
+              duration: BREATH_DURATION,
+              easing: SMOOTH_EASING,
+              useNativeDriver: true,
+            }),
+            Animated.timing(offset.translateY, {
+              toValue: offset.maxOffsetY,
+              duration: BREATH_DURATION,
+              easing: SMOOTH_EASING,
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
+        // Exhale - contract all circles, fade in, and converge to center (perfect circle)
+        Animated.parallel([
+          ...scales.map((scale) =>
             Animated.timing(scale, {
               toValue: MIN_SCALE,
               duration: BREATH_DURATION,
+              easing: EXHALE_EASING,
               useNativeDriver: true,
             })
-          ).concat(
-            opacities.map((opacity, index) => {
-              // When contracted, inner circles are denser (higher opacity)
-              // Outer circles are more transparent
-              const progress = index / NUM_CIRCLES;
-              const minOpacity = 0.6 - (progress * 0.55); // 0.6 for center, 0.05 for outer
-              return Animated.timing(opacity, {
-                toValue: minOpacity,
-                duration: BREATH_DURATION,
-                useNativeDriver: true,
-              });
+          ),
+          ...opacities.map((opacity) =>
+            Animated.timing(opacity, {
+              toValue: 0.75,
+              duration: BREATH_DURATION,
+              easing: OPACITY_EXHALE_EASING,
+              useNativeDriver: true,
             })
-          )
-        ),
+          ),
+          ...offsets.flatMap((offset) => [
+            Animated.timing(offset.translateX, {
+              toValue: 0,
+              duration: BREATH_DURATION,
+              easing: EXHALE_EASING,
+              useNativeDriver: true,
+            }),
+            Animated.timing(offset.translateY, {
+              toValue: 0,
+              duration: BREATH_DURATION,
+              easing: EXHALE_EASING,
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
       ]);
     };
 
@@ -111,18 +165,10 @@ export const OnboardingBreathingCircle: React.FC<OnboardingBreathingCircleProps>
   return (
     <View style={styles.container}>
       {scales.map((scale, index) => {
-        // All circles start at the same size, but scale differently
+        // All circles start at the same size
         const baseSize = 100;
         const size = baseSize;
-        
-        // Create slight random offsets to make circles appear bunched up
-        // Inner circles (lower index) have smaller offsets (more centered)
-        // Outer circles (higher index) have larger offsets (spread out)
-        const progress = index / NUM_CIRCLES;
-        const maxOffset = progress * 15; // Max 15px offset for outer circles
-        const angle = (index * 137.5) % 360; // Golden angle for even distribution
-        const translateX = Math.cos((angle * Math.PI) / 180) * maxOffset;
-        const translateY = Math.sin((angle * Math.PI) / 180) * maxOffset;
+        const offset = offsets[index];
 
         return (
           <Animated.View
@@ -135,8 +181,8 @@ export const OnboardingBreathingCircle: React.FC<OnboardingBreathingCircleProps>
                 borderRadius: size / 2,
                 transform: [
                   { scale },
-                  { translateX },
-                  { translateY },
+                  { translateX: offset.translateX },
+                  { translateY: offset.translateY },
                 ],
                 opacity: opacities[index],
               },
@@ -159,6 +205,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     backgroundColor: 'white',
     borderWidth: 0.5,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 1)', // Fully opaque border
   },
 });

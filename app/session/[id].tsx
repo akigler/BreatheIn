@@ -16,14 +16,15 @@ import { useSessionStore } from '../../store/sessionStore';
 import { enableShield, disableShield } from '../../native-modules/ScreenShield';
 import { NATURE_IMAGES, getSoundForImage } from '../../utils/constants';
 
-const FIRST_BREATH_DURATION = 5000; // 5 seconds for first breath cycle
+const BREATH_DURATION = 6000; // 6 seconds for inhale/exhale (matches OnboardingBreathingCircle)
+const TOTAL_CYCLE = 12000; // 12 seconds total (6s inhale + 6s exhale)
 
 export default function BreathingSession() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { isActive, duration, remainingTime, startSession, stopSession, updateRemainingTime } =
     useSessionStore();
-  const [breathText, setBreathText] = useState<'in' | 'out'>('in');
+  const [breathText, setBreathText] = useState<'in' | 'out'>('out');
   const [backgroundImage, setBackgroundImage] = useState<string>('');
   const [isMuted, setIsMuted] = useState(false);
   const [showTimer, setShowTimer] = useState(false);
@@ -31,6 +32,7 @@ export default function BreathingSession() {
   const gongSoundRef = useRef<Audio.Sound | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const breathIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const animationStartTimeRef = useRef<number | null>(null);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const remainingTimeRef = useRef(remainingTime);
   const sessionDurationSeconds = duration * 60; // Convert minutes to seconds
@@ -141,39 +143,40 @@ export default function BreathingSession() {
   };
 
   // Breathing text animation (inhale/exhale) - syncs with orb expansion/contraction
-  // Orb starts small with "Breathe Out", expands (Breathe In), then contracts (Breathe Out)
   useEffect(() => {
     if (isActive) {
-      // Start with "Breathe Out" (orb is small)
-      setBreathText('out');
+      // Set animation start time
+      animationStartTimeRef.current = Date.now();
       
-      // Immediately change to "Breathe In" as orb starts expanding (small → large)
-      const expandTimer = setTimeout(() => {
-        setBreathText('in');
-      }, 50); // Small delay to show "Breathe Out" briefly when small
+      // Start with "Breathe Out" (circle is at smallest, about to start growing)
+      setBreathText('out');
 
-      // After expansion duration, change to "Breathe Out" as orb starts contracting (large → small)
-      const contractTimer = setTimeout(() => {
-        setBreathText('out');
-      }, FIRST_BREATH_DURATION + 50);
-
-      // Then loop: toggle every breath duration to sync with orb
-      // When orb expands (small to large) = "Breathe In"
-      // When orb contracts (large to small) = "Breathe Out"
+      // Update breath text based on animation phase
       breathIntervalRef.current = setInterval(() => {
-        setBreathText((prev) => {
-          // Swapped logic: "Breathe In" during expansion, "Breathe Out" during contraction
-          return prev === 'out' ? 'in' : 'out';
-        });
-      }, FIRST_BREATH_DURATION);
+        if (animationStartTimeRef.current === null) return;
+        
+        // Calculate elapsed time since animation started
+        const elapsed = Date.now() - animationStartTimeRef.current;
+        const cycleTime = elapsed % TOTAL_CYCLE;
+        
+        if (cycleTime < BREATH_DURATION) {
+          // Inhale phase (0-6000ms): circle is expanding, show "Breathe In"
+          setBreathText('in');
+        } else {
+          // Exhale phase (6000-12000ms): circle is contracting, show "Breathe Out"
+          setBreathText('out');
+        }
+      }, 100); // Check every 100ms for smooth updates
 
       return () => {
-        clearTimeout(expandTimer);
-        clearTimeout(contractTimer);
+        animationStartTimeRef.current = null;
         if (breathIntervalRef.current) {
           clearInterval(breathIntervalRef.current);
         }
       };
+    } else {
+      animationStartTimeRef.current = null;
+      setBreathText('out');
     }
   }, [isActive]);
 
@@ -376,6 +379,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
     marginTop: 40,
+    marginBottom: 15,
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
@@ -390,6 +394,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 20,
+    marginTop: 15,
     marginBottom: 20,
     flexDirection: 'row',
     alignItems: 'center',

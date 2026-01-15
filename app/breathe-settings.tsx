@@ -325,7 +325,7 @@ export default function BreatheSettingsScreen() {
             </Text>
             <TouchableOpacity
               style={styles.chooseAppsButton}
-              onPress={() => router.push('/(tabs)/choose-apps')}
+              onPress={() => router.push('/choose-apps')}
             >
               <Text style={styles.chooseAppsButtonText}>Add / Remove</Text>
             </TouchableOpacity>
