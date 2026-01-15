@@ -159,7 +159,7 @@ export const SessionControls: React.FC<SessionControlsProps> = ({
               style={styles.durationButton}
             >
               <Text style={styles.durationButtonText}>
-                {formatDuration(selectedDuration)}
+                - {formatDuration(selectedDuration)} +
               </Text>
             </LinearGradient>
           </TouchableOpacity>
