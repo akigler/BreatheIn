@@ -102,7 +102,7 @@ export default function BreathingSession() {
           { uri: 'https://www.orangefreesounds.com/wp-content/uploads/2014/11/Gong-sound.mp3' },
           { 
             shouldPlay: false,
-            volume: 0.8,
+            volume: 0.68,
           }
         );
         gongSoundRef.current = gongSound;
