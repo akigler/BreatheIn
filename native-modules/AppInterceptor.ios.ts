@@ -20,7 +20,7 @@
  * - Native module bridge setup
  */
 
-import { AppInterceptorModule } from './AppInterceptor';
+import type { AppInterceptorModule } from './AppInterceptor.types';
 import { AppInfo } from '../types/breatheSettings';
 
 /**

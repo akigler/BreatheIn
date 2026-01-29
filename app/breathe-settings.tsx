@@ -52,10 +52,24 @@ export default function BreatheSettingsScreen() {
   const [endTime, setEndTime] = useState('17:00');
   const [showCreateList, setShowCreateList] = useState(false);
   const [newListName, setNewListName] = useState('');
+  const [accessibilityEnabled, setAccessibilityEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
     loadSettings();
   }, []);
+
+  useEffect(() => {
+    const checkAccessibility = async () => {
+      if (Platform.OS !== 'android') return;
+      try {
+        const enabled = await appInterceptionService.hasPermissions();
+        setAccessibilityEnabled(enabled);
+      } catch {
+        setAccessibilityEnabled(false);
+      }
+    };
+    checkAccessibility();
+  }, [isEnabled]);
 
   const handleToggle = async () => {
     const newValue = !isEnabled;
@@ -150,65 +164,52 @@ export default function BreatheSettingsScreen() {
         }
         
         if (!hasPermissions) {
-          // Try to request permissions (will likely fail with placeholder)
-          let granted = false;
-          try {
-            granted = await nativeModule.requestPermissions();
-          } catch (error) {
-            console.warn('Could not request permissions (placeholder module):', error);
+          // Show popup that sends user to the right settings (Accessibility on Android, app settings on iOS)
+          if (Platform.OS === 'android') {
+            Alert.alert(
+              'Enable Breathe In',
+              'To show a breathing moment before opening selected apps, turn on "Breathe In" in Accessibility. In the next screen, find Breathe In in the list and turn it on.',
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => {} },
+                {
+                  text: 'Open Accessibility Settings',
+                  onPress: async () => {
+                    try {
+                      await nativeModule.requestPermissions();
+                      // Opens Settings > Accessibility; user enables the service and returns
+                      // They can turn the toggle on again when back
+                    } catch (error) {
+                      console.warn('Could not open Accessibility settings:', error);
+                      Linking.openSettings();
+                    }
+                  },
+                },
+              ]
+            );
+            return;
           }
-          
-          if (!granted) {
-            // Show settings alert - user needs to enable in system settings
-            if (Platform.OS === 'ios') {
-              Alert.alert(
-                'Screen Time Permission Required',
-                'To enable breathe interception, you need to grant Screen Time permissions. Please go to Settings > Screen Time and enable permissions for this app.',
-                [
-                  { text: 'Cancel', style: 'cancel', onPress: () => {} },
-                  {
-                    text: 'Open Settings',
-                    onPress: async () => {
-                      await Linking.openSettings();
-                      // Enable toggle after opening settings
-                      try {
-                        await nativeModule.initialize();
-                        await appInterceptionService.startMonitoring();
-                        await toggle();
-                      } catch (error) {
-                        console.error('Error initializing after settings:', error);
-                        // Still enable toggle
-                        await toggle();
-                      }
-                    },
+          if (Platform.OS === 'ios') {
+            Alert.alert(
+              'Screen Time Permission Required',
+              'To enable breathe interception, you need to grant Screen Time permissions. Please go to Settings > Screen Time and enable permissions for this app.',
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => {} },
+                {
+                  text: 'Open Settings',
+                  onPress: async () => {
+                    await Linking.openSettings();
+                    try {
+                      await nativeModule.initialize();
+                      await appInterceptionService.startMonitoring();
+                      await toggle();
+                    } catch (error) {
+                      console.error('Error initializing after settings:', error);
+                      await toggle();
+                    }
                   },
-                ]
-              );
-            } else {
-              Alert.alert(
-                'Accessibility Permission Required',
-                'To enable breathe interception, you need to enable Accessibility Service. Please go to Settings > Accessibility and enable this app.',
-                [
-                  { text: 'Cancel', style: 'cancel', onPress: () => {} },
-                  {
-                    text: 'Open Settings',
-                    onPress: async () => {
-                      await Linking.openSettings();
-                      // Enable toggle after opening settings
-                      try {
-                        await nativeModule.initialize();
-                        await appInterceptionService.startMonitoring();
-                        await toggle();
-                      } catch (error) {
-                        console.error('Error initializing after settings:', error);
-                        // Still enable toggle
-                        await toggle();
-                      }
-                    },
-                  },
-                ]
-              );
-            }
+                },
+              ]
+            );
             return;
           }
         }
@@ -377,6 +378,56 @@ export default function BreatheSettingsScreen() {
           <View style={styles.placeholder} />
         </View>
 
+        {/* Android: Accessibility status and shortcut */}
+        {Platform.OS === 'android' && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="accessibility" size={20} color="#fff" style={styles.sectionIcon} />
+              <Text style={styles.sectionTitle}>Accessibility</Text>
+            </View>
+            <Text style={styles.sectionDescription}>
+              Breathe In needs to be turned on in Android Accessibility so it can show a breathing moment when you open selected apps. This is separate from "All permissions" in app info.
+            </Text>
+            {accessibilityEnabled === true ? (
+              <View style={styles.accessibilityStatusRow}>
+                <Ionicons name="checkmark-circle" size={24} color="#00FFB8" />
+                <Text style={styles.accessibilityStatusText}>Breathe In is enabled in Accessibility</Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.accessibilityStatusRow}>
+                  <Ionicons name="warning" size={24} color="#FFB800" />
+                  <Text style={styles.accessibilityStatusTextWarning}>
+                    {accessibilityEnabled === false ? 'Not enabled' : 'Checking…'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.appPermissionsButton}
+                  onPress={() => router.push('/permissions')}
+                >
+                  <Text style={styles.appPermissionsButtonText}>App permissions</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.openAccessibilityButton}
+                  onPress={async () => {
+                    try {
+                      await appInterceptionService.requestPermissions();
+                    } catch {
+                      Linking.openSettings();
+                    }
+                  }}
+                >
+                  <Text style={styles.openAccessibilityButtonText}>Open Accessibility Settings</Text>
+                </TouchableOpacity>
+                <Text style={styles.accessibilitySteps}>
+                  1. In the next screen, find "Breathe In" in the list{'\n'}
+                  2. Tap it and turn the switch On
+                </Text>
+              </>
+            )}
+          </View>
+        )}
+
         {/* Master Toggle */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -531,13 +582,13 @@ export default function BreatheSettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Selected Apps Summary */}
-        {selectedApps.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Selected Apps</Text>
-            <Text style={styles.sectionDescription}>
-              {selectedApps.length} {selectedApps.length === 1 ? 'app' : 'apps'} selected
-            </Text>
+        {/* Block list: one list of apps that trigger breathing */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="phone-portrait" size={20} color="#fff" style={styles.sectionIcon} />
+              <Text style={styles.sectionTitle}>Apps</Text>
+            </View>
             <TouchableOpacity
               style={styles.chooseAppsButton}
               onPress={() => router.push('/choose-apps')}
@@ -545,7 +596,27 @@ export default function BreatheSettingsScreen() {
               <Text style={styles.chooseAppsButtonText}>Add / Remove</Text>
             </TouchableOpacity>
           </View>
-        )}
+          <Text style={styles.sectionDescription}>
+            Only these apps will trigger a breathing moment when you open them. Tap Add / Remove to see all your apps.
+          </Text>
+          <Text style={styles.appCountText}>
+            {selectedApps.length === 0
+              ? 'No apps selected'
+              : `${selectedApps.length} ${selectedApps.length === 1 ? 'app' : 'apps'} selected`}
+          </Text>
+          {selectedApps.length > 0 && (
+            <View style={styles.appChipsRow}>
+              {selectedApps.slice(0, 5).map((app) => (
+                <View key={app.id} style={styles.appChip}>
+                  <Text style={styles.appChipText}>{app.name}</Text>
+                </View>
+              ))}
+              {selectedApps.length > 5 && (
+                <Text style={styles.appChipMore}>+{selectedApps.length - 5}</Text>
+              )}
+            </View>
+          )}
+        </View>
       </ScrollView>
 
       {/* Time Window Picker Modal */}
@@ -732,6 +803,57 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 16,
   },
+  accessibilityStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  accessibilityStatusText: {
+    fontSize: 16,
+    color: '#00FFB8',
+    fontWeight: '600',
+  },
+  accessibilityStatusTextWarning: {
+    fontSize: 16,
+    color: '#FFB800',
+    fontWeight: '600',
+  },
+  appPermissionsButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    marginBottom: 12,
+  },
+  appPermissionsButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  openAccessibilityButton: {
+    backgroundColor: 'rgba(0, 255, 184, 0.2)',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 184, 0.4)',
+    marginBottom: 12,
+  },
+  openAccessibilityButtonText: {
+    color: '#00FFB8',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  accessibilitySteps: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.5)',
+    lineHeight: 20,
+  },
   createButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     paddingHorizontal: 12,
@@ -886,6 +1008,34 @@ const styles = StyleSheet.create({
   chooseAppsButtonText: {
     color: '#00D4FF',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  appCountText: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.6)',
+    marginTop: 8,
+  },
+  appChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+  },
+  appChip: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  appChipText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  appChipMore: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 13,
     fontWeight: '600',
   },
   statisticsTitle: {

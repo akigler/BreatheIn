@@ -7,6 +7,7 @@ import * as Contacts from 'expo-contacts';
 import { useSessionStore } from '../../store/sessionStore';
 import { SessionControls } from '../../components/SessionControls';
 import { BreatheSettingsButton } from '../../components/BreatheSettingsButton';
+import { SoundBowlButton } from '../../components/SoundBowlButton';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -70,7 +71,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 20 }]}>
         <View style={styles.header}>
           <TouchableOpacity onLongPress={handleResetOnboarding} activeOpacity={1}>
             <Text style={styles.title}>Breathe In</Text>
@@ -89,6 +90,11 @@ export default function HomeScreen() {
           <View style={styles.quickActions}>
             <BreatheSettingsButton />
           </View>
+        </View>
+
+        {/* Sound Bowl Button - Centered */}
+        <View style={styles.soundBowlContainer}>
+          <SoundBowlButton />
         </View>
       </ScrollView>
       
@@ -111,13 +117,12 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     padding: 20,
-    paddingTop: 160,
     paddingBottom: 100,
   },
   header: {
     alignItems: 'center',
     marginBottom: 40,
-    marginTop: -20,
+    marginTop: 20,
   },
   title: {
     fontSize: 42,
@@ -165,5 +170,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  soundBowlContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 0,
+    marginBottom: 40,
   },
 });

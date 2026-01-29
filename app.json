@@ -16,7 +16,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.breathein.app",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"],
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
         "NSContactsUsageDescription": "Breathe In needs access to your contacts to help you find and invite friends.",
         "NSFamilyControlsUsageDescription": "Breathe In uses Screen Time to help you pause and breathe before opening distracting apps."
       },
@@ -33,13 +35,30 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "READ_CONTACTS"
+      ],
+      "package": "com.breathein.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [{ "scheme": "breathein", "host": "overlay", "pathPrefix": "/" }],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
       ]
     },
+    "scheme": "breathein",
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "./plugins/breathe-in-accessibility-plugin.js"
     ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f5d3a5ca-ecfb-4dec-808d-f0d9b6b2778d"
+      }
+    }
   }
 }

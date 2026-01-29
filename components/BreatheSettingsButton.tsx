@@ -6,11 +6,15 @@ import {
   TouchableOpacity,
   Modal,
   TextInput,
+  Platform,
+  AppState,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useBreatheSettingsStore } from '../store/breatheSettingsStore';
 import { AppInfo, TimeWindow } from '../types/breatheSettings';
+import { ChooseAppsModal } from './ChooseAppsModal';
+import { appInterceptionService } from '../services/appInterceptionService';
 
 export const BreatheSettingsButton: React.FC = () => {
   const router = useRouter();
@@ -19,8 +23,11 @@ export const BreatheSettingsButton: React.FC = () => {
     breatheLists,
     timeWindows,
     setTimeWindows,
+    setSelectedApps,
     loadSettings,
   } = useBreatheSettingsStore();
+  const [showAppPicker, setShowAppPicker] = useState(false);
+  const [hasAccessibility, setHasAccessibility] = useState<boolean | null>(null);
 
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [startTime, setStartTime] = useState('09:00');
@@ -29,6 +36,29 @@ export const BreatheSettingsButton: React.FC = () => {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  const checkAccessibility = React.useCallback(async () => {
+    if (Platform.OS !== 'android') return;
+    try {
+      const has = await appInterceptionService.hasPermissions();
+      setHasAccessibility(has);
+    } catch {
+      setHasAccessibility(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkAccessibility();
+  }, [showAppPicker, checkAccessibility]);
+
+  // Re-check when user returns from Settings (e.g. after enabling Accessibility)
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') checkAccessibility();
+    });
+    return () => sub.remove();
+  }, [checkAccessibility]);
 
   useEffect(() => {
     // Use the first time window, or default to 9-5 pm
@@ -107,45 +137,79 @@ export const BreatheSettingsButton: React.FC = () => {
     setShowTimePicker(false);
   };
 
-  const handleBreatheClick = () => {
+  const handleAppPlusPress = () => {
+    setShowAppPicker(true);
+  };
+
+  const handleAppPickerSave = async (apps: AppInfo[]) => {
+    await setSelectedApps(apps);
+    appInterceptionService.syncMonitoredPackages();
+    setShowAppPicker(false);
+  };
+
+  const handleBreatheSettingsLongPress = () => {
     router.push('/breathe-settings');
   };
 
   return (
     <View style={styles.container}>
-      {/* Left: Time Window */}
-      <TouchableOpacity
-        onPress={handleTimeClick}
-        activeOpacity={0.7}
-        style={styles.timeButtonContainer}
-      >
-        <View style={styles.timeButton}>
-          <Text style={styles.timeText}>
-            {formatTimeDisplay(startTime, endTime)}
-          </Text>
-        </View>
-      </TouchableOpacity>
-
-      {/* Right: Breathe with Apps */}
-      <TouchableOpacity
-        onPress={handleBreatheClick}
-        activeOpacity={0.7}
-        style={styles.breatheButtonContainer}
-      >
-        <LinearGradient
-          colors={['rgba(0, 50, 60, 0.95)', 'rgba(60, 30, 20, 0.95)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.breatheButton}
+      <View style={styles.buttonsRow}>
+        {/* Time Window */}
+        <TouchableOpacity
+          onPress={handleTimeClick}
+          activeOpacity={0.7}
+          style={styles.timeButtonContainer}
         >
-          <View style={styles.breatheButtonContent}>
-            <Text style={styles.breatheText}>App</Text>
+          <View style={styles.timeButton}>
+            <Text style={styles.timeText}>
+              {formatTimeDisplay(startTime, endTime)}
+            </Text>
           </View>
-          <View style={styles.plusButton}>
-            <Text style={styles.plusButtonText}>+</Text>
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
+        </TouchableOpacity>
+
+        {/* App + (opens app picker; long-press = full Breathe Settings) */}
+        <TouchableOpacity
+          onPress={handleAppPlusPress}
+          onLongPress={handleBreatheSettingsLongPress}
+          activeOpacity={0.7}
+          style={styles.breatheButtonContainer}
+        >
+          <LinearGradient
+            colors={['rgba(0, 50, 60, 0.95)', 'rgba(60, 30, 20, 0.95)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.breatheButton}
+          >
+            <View style={styles.breatheButtonContent}>
+              <Text style={styles.breatheText}>App</Text>
+              {selectedApps.length > 0 && (
+                <Text style={styles.appCountBadge}>{selectedApps.length}</Text>
+              )}
+            </View>
+            <View style={styles.plusButton}>
+              <Text style={styles.plusButtonText}>+</Text>
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
+
+      {Platform.OS === 'android' && hasAccessibility === false && (
+        <TouchableOpacity
+          style={styles.accessibilityHint}
+          onPress={() => appInterceptionService.requestPermissions()}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.accessibilityHintText}>
+            Enable Accessibility to see all your apps
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      <ChooseAppsModal
+        visible={showAppPicker}
+        onClose={() => setShowAppPicker(false)}
+        onSave={handleAppPickerSave}
+      />
 
       {/* Time Picker Modal */}
       <Modal
@@ -216,9 +280,11 @@ export const BreatheSettingsButton: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: {
+    marginBottom: 12,
+  },
+  buttonsRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 12,
   },
   timeButtonContainer: {
     flex: 1,
@@ -258,10 +324,27 @@ const styles = StyleSheet.create({
   breatheButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
   breatheText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  appCountBadge: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  accessibilityHint: {
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignSelf: 'flex-start',
+  },
+  accessibilityHintText: {
+    color: '#00FFB8',
+    fontSize: 13,
     fontWeight: '600',
   },
   appIconsContainer: {

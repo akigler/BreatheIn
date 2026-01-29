@@ -5,7 +5,7 @@ import { useSessionStore } from '../store/sessionStore';
 import { SESSION_DURATIONS, formatDuration, secondsToMinutes } from '../utils/constants';
 
 const ITEM_HEIGHT = 44;
-const WHEEL_HEIGHT = ITEM_HEIGHT * 3;
+const WHEEL_HEIGHT = ITEM_HEIGHT * 4;
 
 interface SessionControlsProps {
   onStartSession: (duration: number) => void;

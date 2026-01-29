@@ -1,91 +1,97 @@
 /**
  * Android App Interceptor Implementation
- * 
- * This file will contain the Android-specific implementation using Accessibility Service.
- * 
- * Requirements:
- * - Accessibility Service permission
- * - User must enable in system settings
- * - Can detect app launches and show overlays
- * 
- * Implementation Notes:
- * 1. Create Accessibility Service to monitor app launches
- * 2. Use UsageStatsManager to get app usage information
- * 3. Create a native module bridge to React Native
- * 4. Emit events when apps are launched
- * 
- * This is a placeholder - actual implementation requires:
- * - Kotlin/Java native module
- * - Accessibility Service setup
- * - Native module bridge setup
+ *
+ * Uses the BreatheInAccessibility native module (added by the config plugin) when
+ * available. The Accessibility Service detects when the user opens a monitored app
+ * and launches Breathe In via breathein://overlay?app_id=... so the overlay shows on top.
+ *
+ * We look up NativeModules at call time (lazy) so the module is found even if the
+ * bridge wasn't ready at first load (e.g. with New Architecture).
  */
 
-import { AppInterceptorModule } from './AppInterceptor';
+import { NativeModules, Platform } from 'react-native';
+import type { AppInterceptorModule } from './AppInterceptor.types';
 import { AppInfo } from '../types/breatheSettings';
 
-/**
- * Placeholder Android implementation
- * 
- * TODO: Implement actual native module with:
- * 1. Accessibility Service setup
- * 2. UsageStatsManager integration
- * 3. Event emission to React Native
- */
+let _loggedModuleCheck = false;
+
+function getNativeModule(): any {
+  if (Platform.OS !== 'android') return null;
+  const mod = NativeModules.BreatheInAccessibility ?? null;
+  // One-time diagnostic if module missing (helps debug Expo Go vs dev build, or registration issues)
+  if (__DEV__ && !mod && !_loggedModuleCheck) {
+    _loggedModuleCheck = true;
+    const keys = Object.keys(NativeModules).filter((k) => k.toLowerCase().includes('breathe') || k.toLowerCase().includes('accessibility'));
+    console.warn(
+      '[BreatheIn] Native module BreatheInAccessibility not found. ' +
+      'Make sure you opened the app via "npx expo run:android" (not Expo Go). ' +
+      (keys.length > 0 ? `Related NativeModules: ${keys.join(', ')}` : 'No Breathe/Accessibility modules in NativeModules.')
+    );
+  }
+  return mod;
+}
+
 export const AppInterceptorAndroid: AppInterceptorModule = {
   initialize: async () => {
-    console.log('[Android] AppInterceptor.initialize() - Placeholder');
-    // TODO: Check Accessibility Service permission
-    // TODO: Set up UsageStatsManager
+    if (getNativeModule()) {
+      // No-op; permissions are checked via hasPermissions
+    }
   },
 
   startMonitoring: async () => {
-    console.log('[Android] AppInterceptor.startMonitoring() - Placeholder');
-    // TODO: Start Accessibility Service
-    // TODO: Start monitoring app launches
+    const mod = getNativeModule();
+    if (!mod) return;
+    // Monitored packages are set via setMonitoredPackages (called by appInterceptionService)
+    // The Accessibility Service reads them from SharedPreferences when it receives events
   },
 
   stopMonitoring: async () => {
-    console.log('[Android] AppInterceptor.stopMonitoring() - Placeholder');
-    // TODO: Stop Accessibility Service
-    // TODO: Stop monitoring
+    const mod = getNativeModule();
+    if (!mod) return;
+    mod.setMonitoredPackages([]);
   },
 
-  onAppLaunch: (callback: (appId: string) => void) => {
-    console.log('[Android] AppInterceptor.onAppLaunch() - Placeholder');
-    // TODO: Set up event listener for app launches via Accessibility Service
-    // TODO: Call callback when app is launched
+  onAppLaunch: (_callback: (appId: string) => void) => {
+    // On Android we don't need a callback: the Accessibility Service launches the app
+    // via breathein://overlay, and the app shows the overlay when it opens (see _layout deep link handling)
   },
 
   getInstalledApps: async (): Promise<AppInfo[]> => {
-    console.log('[Android] AppInterceptor.getInstalledApps() - Placeholder');
-    // TODO: Use PackageManager to get list of installed apps
-    // Return mock data for now
-    return [];
+    const mod = getNativeModule();
+    if (!mod) return [];
+    const list = await mod.getInstalledApps();
+    if (!Array.isArray(list)) return [];
+    return list.map((item: { id: string; name: string; category?: string }) => ({
+      id: item.id,
+      name: item.name,
+      category: item.category ?? 'other',
+    }));
   },
 
   hasPermissions: async (): Promise<boolean> => {
-    console.log('[Android] AppInterceptor.hasPermissions() - Placeholder');
-    // TODO: Check if Accessibility Service is enabled
-    // TODO: Check if UsageStats permission is granted
-    // In production, this should check:
-    // Settings.Secure.getInt(contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED) == 1
-    // And check if our service is in the list of enabled services
-    // For now, return false to trigger permission request
-    return false;
+    const mod = getNativeModule();
+    if (!mod) return false;
+    return mod.hasPermissions();
   },
 
   requestPermissions: async (): Promise<boolean> => {
-    console.log('[Android] AppInterceptor.requestPermissions() - Placeholder');
-    // TODO: Request Accessibility Service permission
-    // TODO: Request UsageStats permission
-    // In production, this should:
-    // 1. Request UsageStats permission via ActivityCompat.requestPermissions
-    // 2. Open Accessibility Settings to enable the service
-    // Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-    // context.startActivity(intent)
-    // For now, return false to indicate permission was not granted
-    // The UI will handle showing the user they need to go to Settings
-    return false;
+    const mod = getNativeModule();
+    if (!mod) return false;
+    await mod.requestPermissions();
+    return true;
+  },
+
+  setMonitoredPackages: (packageIds: string[]) => {
+    const mod = getNativeModule();
+    if (!mod) return;
+    mod.setMonitoredPackages(packageIds);
+  },
+
+  launchApp: async (packageId: string): Promise<boolean> => {
+    const mod = getNativeModule();
+    if (!mod || typeof mod.launchApp !== 'function') return false;
+    await mod.launchApp(packageId);
+    return true;
   },
 };
 

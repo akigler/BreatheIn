@@ -1,64 +1,7 @@
 import { Platform } from 'react-native';
-import { AppInfo } from '../types/breatheSettings';
+import type { AppInterceptorModule } from './AppInterceptor.types';
 
-/**
- * Native module interface for app interception
- * 
- * This interface defines the contract for platform-specific implementations
- * that detect when apps are launched and can show overlays.
- * 
- * iOS Implementation:
- * - Uses Screen Time API (FamilyControls framework)
- * - Requires special entitlements from Apple
- * - User must grant Screen Time permissions
- * 
- * Android Implementation:
- * - Uses Accessibility Service
- * - Requires user to enable in system settings
- * - Can detect app launches and show overlays
- */
-
-export interface AppInterceptorModule {
-  /**
-   * Initialize the app interceptor
-   * Request necessary permissions and set up listeners
-   */
-  initialize: () => Promise<void>;
-
-  /**
-   * Start monitoring app launches
-   */
-  startMonitoring: () => Promise<void>;
-
-  /**
-   * Stop monitoring app launches
-   */
-  stopMonitoring: () => Promise<void>;
-
-  /**
-   * Register callback for app launch events
-   * @param callback Function called when an app is launched
-   */
-  onAppLaunch: (callback: (appId: string) => void) => void;
-
-  /**
-   * Get list of installed apps
-   * @returns Promise resolving to array of app information
-   */
-  getInstalledApps: () => Promise<AppInfo[]>;
-
-  /**
-   * Check if permissions are granted
-   * @returns Promise resolving to true if permissions are granted
-   */
-  hasPermissions: () => Promise<boolean>;
-
-  /**
-   * Request necessary permissions
-   * @returns Promise resolving to true if permissions were granted
-   */
-  requestPermissions: () => Promise<boolean>;
-}
+export type { AppInterceptorModule } from './AppInterceptor.types';
 
 // Platform-specific implementations
 let nativeModule: AppInterceptorModule | null = null;

@@ -1,19 +1,88 @@
+import { Linking, Alert, NativeModules, Platform } from 'react-native';
 import { useBreatheSettingsStore } from '../store/breatheSettingsStore';
 import { AppInfo, TimeWindow } from '../types/breatheSettings';
 
-// Safely import the native module functions
-let getAppInterceptorModule: (() => any) | null = null;
-let isNativeModuleAvailable: (() => boolean) | null = null;
+// Lazy-load AppInterceptor to avoid load-order issues (module loaded on first use)
+let _appInterceptorModule: { getAppInterceptorModule: () => any } | null | undefined = undefined;
 
-try {
-  const appInterceptorModule = require('../native-modules/AppInterceptor');
-  getAppInterceptorModule = appInterceptorModule.getAppInterceptorModule;
-  isNativeModuleAvailable = appInterceptorModule.isNativeModuleAvailable;
-} catch (error) {
-  console.warn('Failed to load AppInterceptor module:', error);
-  // Provide fallback functions
-  getAppInterceptorModule = () => null;
-  isNativeModuleAvailable = () => false;
+function getAppInterceptorModule(): (() => any) | null {
+  if (_appInterceptorModule === undefined) {
+    try {
+      const mod = require('../native-modules/AppInterceptor');
+      _appInterceptorModule = mod && typeof mod.getAppInterceptorModule === 'function' ? mod : null;
+    } catch (_) {
+      _appInterceptorModule = null;
+    }
+  }
+  return _appInterceptorModule?.getAppInterceptorModule ?? null;
+}
+
+/** Resolve the native module whether the package exports a getter or the module directly. */
+function resolveNativeModule(): any {
+  const modOrGetter = getAppInterceptorModule();
+  if (!modOrGetter) return null;
+  if (typeof modOrGetter === 'function') return modOrGetter();
+  // Package may export the module object directly
+  if (typeof modOrGetter.getInstalledApps === 'function' || typeof modOrGetter.hasPermissions === 'function') return modOrGetter;
+  return null;
+}
+
+/** On Android, fallback to NativeModules.BreatheInAccessibility when the JS wrapper failed to load. */
+function getAndroidDirectModule(): any {
+  if (Platform.OS !== 'android') return null;
+  const mod = NativeModules.BreatheInAccessibility ?? null;
+  if (!mod || typeof mod.getInstalledApps !== 'function') return null;
+  return {
+    initialize: async () => {},
+    startMonitoring: async () => {},
+    stopMonitoring: async () => { if (typeof mod.setMonitoredPackages === 'function') mod.setMonitoredPackages([]); },
+    onAppLaunch: () => {},
+    getInstalledApps: async (): Promise<AppInfo[]> => {
+      const list = await mod.getInstalledApps();
+      if (!Array.isArray(list)) return [];
+      return list.map((item: { id: string; name: string; category?: string }) => ({
+        id: item.id,
+        name: item.name,
+        category: item.category ?? 'other',
+      }));
+    },
+    hasPermissions: () => (typeof mod.hasPermissions === 'function' ? mod.hasPermissions() : Promise.resolve(false)),
+    requestPermissions: () => (typeof mod.requestPermissions === 'function' ? mod.requestPermissions() : Promise.resolve(false)),
+    setMonitoredPackages: (ids: string[]) => { if (typeof mod.setMonitoredPackages === 'function') mod.setMonitoredPackages(ids); },
+    launchApp: async (packageId: string): Promise<boolean> => {
+      if (typeof mod.launchApp !== 'function') return false;
+      await mod.launchApp(packageId);
+      return true;
+    },
+  };
+}
+
+/** Prefer wrapper; on Android use direct native module when wrapper is null. */
+function getEffectiveModule(): any {
+  const wrapped = resolveNativeModule();
+  if (wrapped) return wrapped;
+  return getAndroidDirectModule();
+}
+
+let _appListDiagnosticLogged = false;
+function logAppListDiagnostic(reason: 'unavailable' | 'empty', resolved: any): void {
+  if (_appListDiagnosticLogged) return;
+  _appListDiagnosticLogged = true;
+  const getter = getAppInterceptorModule();
+  const hasGetter = getter != null;
+  const getterIsFn = typeof getter === 'function';
+  const resolvedOk = resolved != null && typeof resolved?.getInstalledApps === 'function';
+  const androidMod = Platform.OS === 'android' ? NativeModules.BreatheInAccessibility : undefined;
+  const hasAndroidMod = androidMod != null;
+  console.warn(
+    '[Breathe In] App list diagnostic: reason=' +
+      reason +
+      ' getter=' +
+      (hasGetter ? (getterIsFn ? 'function' : 'object') : 'null') +
+      ' resolved=' +
+      (resolvedOk ? 'ok' : 'null') +
+      (Platform.OS === 'android' ? ' NativeModules.BreatheInAccessibility=' + (hasAndroidMod ? 'yes' : 'no') : '')
+  );
 }
 
 class AppInterceptionService {
@@ -32,17 +101,11 @@ class AppInterceptionService {
     }
 
     try {
-      if (!getAppInterceptorModule) {
-        console.warn('getAppInterceptorModule function not available');
-        this.isInitialized = true;
-        return;
-      }
-
-      const nativeModule = getAppInterceptorModule();
+      const nativeModule = getEffectiveModule();
       if (nativeModule) {
-        await nativeModule.initialize();
+        if (typeof nativeModule.initialize === 'function') await nativeModule.initialize();
       } else {
-        console.warn('Native AppInterceptor module not available');
+        if (__DEV__) console.warn('[Breathe In] Native AppInterceptor module not available');
       }
       this.isInitialized = true;
       console.log('App interception service initialized');
@@ -68,18 +131,17 @@ class AppInterceptionService {
     }
 
     try {
-      if (!getAppInterceptorModule) {
-        console.warn('getAppInterceptorModule function not available');
-        return;
-      }
-
-      const nativeModule = getAppInterceptorModule();
-      
-      // Check permissions before starting
+      const nativeModule = getEffectiveModule();
       if (nativeModule) {
         const hasPermissions = await nativeModule.hasPermissions();
         if (!hasPermissions) {
           throw new Error('Permissions not granted. Please grant necessary permissions first.');
+        }
+
+        // Sync monitored package IDs to native (Android Accessibility Service reads these)
+        if (typeof nativeModule.setMonitoredPackages === 'function') {
+          const packageIds = this.getMonitoredPackageIds(settings);
+          nativeModule.setMonitoredPackages(packageIds);
         }
         
         await nativeModule.startMonitoring();
@@ -100,6 +162,22 @@ class AppInterceptionService {
   }
 
   /**
+   * Sync monitored package IDs to native (call after selectedApps/breatheLists change while monitoring is on)
+   */
+  syncMonitoredPackages(): void {
+    try {
+      const nativeModule = getEffectiveModule();
+      if (nativeModule && typeof nativeModule.setMonitoredPackages === 'function') {
+        const settings = useBreatheSettingsStore.getState();
+        const packageIds = this.getMonitoredPackageIds(settings);
+        nativeModule.setMonitoredPackages(packageIds);
+      }
+    } catch (error) {
+      console.warn('Error syncing monitored packages:', error);
+    }
+  }
+
+  /**
    * Stop monitoring app launches
    */
   async stopMonitoring(): Promise<void> {
@@ -108,11 +186,9 @@ class AppInterceptionService {
     }
 
     try {
-      if (getAppInterceptorModule) {
-        const nativeModule = getAppInterceptorModule();
-        if (nativeModule) {
-          await nativeModule.stopMonitoring();
-        }
+      const nativeModule = getEffectiveModule();
+      if (nativeModule) {
+        await nativeModule.stopMonitoring();
       }
       this.isMonitoring = false;
       console.log('App interception monitoring stopped');
@@ -154,6 +230,22 @@ class AppInterceptionService {
 
     // Show breathing overlay
     this.showOverlay(appInfo);
+  }
+
+  /**
+   * Get list of package IDs to monitor (from selectedApps + breatheLists)
+   */
+  private getMonitoredPackageIds(settings: any): string[] {
+    const ids = new Set<string>();
+    for (const app of settings.selectedApps || []) {
+      if (app?.id) ids.add(app.id);
+    }
+    for (const list of settings.breatheLists || []) {
+      for (const app of list?.apps || []) {
+        if (app?.id) ids.add(app.id);
+      }
+    }
+    return Array.from(ids);
   }
 
   /**
@@ -270,14 +362,37 @@ class AppInterceptionService {
    */
   async getInstalledApps(): Promise<AppInfo[]> {
     try {
-      if (getAppInterceptorModule) {
-        const nativeModule = getAppInterceptorModule();
-        if (nativeModule) {
-          return await nativeModule.getInstalledApps();
+      const nativeModule = getEffectiveModule();
+      if (nativeModule && typeof nativeModule.getInstalledApps === 'function') {
+        const list = await nativeModule.getInstalledApps();
+        if (Array.isArray(list) && list.length > 0) return list;
+        // Native module present but returned empty (e.g. bridge not ready yet)
+        if (__DEV__) {
+          logAppListDiagnostic('empty', nativeModule);
+          console.debug(
+            '[Breathe In] Native app list returned empty; using sample list. ' +
+            'If you built with npx expo run:android, try reopening the app or the choose-apps screen.'
+          );
+        }
+      } else if (__DEV__) {
+        logAppListDiagnostic('unavailable', null);
+        let inExpoGo = false;
+        try {
+          const Constants = require('expo-constants').default;
+          inExpoGo = Constants.appOwnership === 'expo';
+        } catch (_) {}
+        if (inExpoGo) {
+          console.warn(
+            '[Breathe In] You are in Expo Go. The real app list only works in a development build. ' +
+            'Run: npx expo run:android (then use the "Breathe In" app that opens, not Expo Go).'
+          );
+        } else {
+          console.debug(
+            '[Breathe In] Native app list not available; using sample list. ' +
+            'Run "npx expo run:android" and open that app (not Expo Go) for the real list.'
+          );
         }
       }
-      // Return mock apps for now if native module not available
-      console.warn('Native module not available, returning mock apps');
       return [
         { id: 'com.twitter', name: 'X (Twitter)', category: 'social' },
         { id: 'com.reddit', name: 'Reddit', category: 'social' },
@@ -304,10 +419,7 @@ class AppInterceptionService {
    */
   async hasPermissions(): Promise<boolean> {
     try {
-      if (!getAppInterceptorModule) {
-        return false;
-      }
-      const nativeModule = getAppInterceptorModule();
+      const nativeModule = getEffectiveModule();
       if (nativeModule) {
         return await nativeModule.hasPermissions();
       }
@@ -319,22 +431,30 @@ class AppInterceptionService {
   }
 
   /**
-   * Request necessary permissions
+   * Request necessary permissions (opens Accessibility settings on Android).
+   * If native intent fails, opens app Settings as fallback and shows instructions.
    */
   async requestPermissions(): Promise<boolean> {
-    try {
-      if (!getAppInterceptorModule) {
-        return false;
+    if (Platform.OS === 'android') {
+      try {
+        const nativeModule = getEffectiveModule();
+        if (nativeModule && typeof nativeModule.requestPermissions === 'function') {
+          await nativeModule.requestPermissions();
+          return true;
+        }
+      } catch (error) {
+        console.warn('Could not open Accessibility settings via native module:', error);
       }
-      const nativeModule = getAppInterceptorModule();
-      if (nativeModule) {
-        return await nativeModule.requestPermissions();
-      }
-      return false;
-    } catch (error) {
-      console.error('Error requesting permissions:', error);
+      // Fallback: open app Settings so user can navigate to Accessibility
+      Linking.openSettings();
+      Alert.alert(
+        'Open Accessibility',
+        'Go to Settings, then tap Accessibility. Find "Breathe In" in the list and turn it On.',
+        [{ text: 'OK' }]
+      );
       return false;
     }
+    return false;
   }
 
   // Callbacks for overlay management
@@ -363,6 +483,21 @@ class AppInterceptionService {
       visible: this.overlayVisible,
       appInfo: this.currentOverlayApp,
     };
+  }
+
+  /**
+   * Launch app by package id (Android). Used when user dismisses overlay so they go to the app they were opening.
+   */
+  async launchAppToForeground(packageId: string): Promise<boolean> {
+    const mod = getEffectiveModule();
+    if (mod && typeof mod.launchApp === 'function') {
+      try {
+        return await mod.launchApp(packageId);
+      } catch (_) {
+        return false;
+      }
+    }
+    return false;
   }
 }
 
