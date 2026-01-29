@@ -61,25 +61,36 @@ export function ChooseAppsModal({ visible, onClose, onSave }: ChooseAppsModalPro
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasAccessibility, setHasAccessibility] = useState<boolean | null>(null);
+  const [hasOverlay, setHasOverlay] = useState<boolean | null>(null);
+
+  const checkPermissions = async () => {
+    if (Platform.OS === 'android') {
+      const [acc, overlay] = await Promise.all([
+        appInterceptionService.hasAccessibilityPermission(),
+        appInterceptionService.hasOverlayPermission(),
+      ]);
+      setHasAccessibility(acc);
+      setHasOverlay(overlay);
+    } else {
+      setHasAccessibility(true);
+      setHasOverlay(true);
+    }
+  };
 
   useEffect(() => {
     if (visible) {
       setSelectedAppIds(new Set(selectedApps.map((app) => app.id)));
       loadApps();
-      if (Platform.OS === 'android') {
-        appInterceptionService.hasPermissions().then(setHasAccessibility);
-      } else {
-        setHasAccessibility(true);
-      }
+      checkPermissions();
     }
   }, [visible, selectedApps]);
 
-  // When user returns from Settings (e.g. after turning on Accessibility), re-check and reload
+  // When user returns from Settings, re-check and reload
   useEffect(() => {
     if (!visible || Platform.OS !== 'android') return;
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        appInterceptionService.hasPermissions().then(setHasAccessibility);
+        checkPermissions();
         loadApps();
       }
     });
@@ -91,21 +102,21 @@ export function ChooseAppsModal({ visible, onClose, onSave }: ChooseAppsModalPro
     try {
       const apps = await appInterceptionService.getInstalledApps();
       setInstalledApps(apps);
-      if (Platform.OS === 'android') {
-        const has = await appInterceptionService.hasPermissions();
-        setHasAccessibility(has);
-      }
+      await checkPermissions();
     } catch (err) {
       console.error('Error loading installed apps:', err);
       setInstalledApps([]);
-      if (Platform.OS === 'android') setHasAccessibility(false);
+      if (Platform.OS === 'android') {
+        setHasAccessibility(false);
+        setHasOverlay(false);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // Only show "need access" when accessibility is actually off (not when list is empty)
-  const needsAccess = Platform.OS === 'android' && hasAccessibility === false;
+  // Need access if either permission is missing
+  const needsAccess = Platform.OS === 'android' && (hasAccessibility === false || hasOverlay === false);
 
   const toggleApp = (app: AppInfo) => {
     const next = new Set(selectedAppIds);
@@ -168,31 +179,69 @@ export function ChooseAppsModal({ visible, onClose, onSave }: ChooseAppsModalPro
             <>
               <View style={styles.needAccessCard}>
                 <Ionicons name="warning" size={32} color="#FFB800" style={styles.needAccessIcon} />
-                <Text style={styles.needAccessTitle}>Give access to see all your apps</Text>
+                <Text style={styles.needAccessTitle}>Two permissions needed</Text>
                 <Text style={styles.needAccessText}>
-                  Breathe In needs to be enabled in Accessibility so it can see your installed apps and show a breathing moment when you open them.
+                  To show a breathing moment on top of apps, Breathe In needs both permissions below.
                 </Text>
-                <TouchableOpacity
-                  style={styles.needAccessButton}
-                  onPress={() => appInterceptionService.requestPermissions()}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.needAccessButtonText}>Open Accessibility Settings</Text>
-                </TouchableOpacity>
-                <Text style={styles.needAccessSteps}>
-                  In the next screen, find "Breathe In" and turn it On.
-                </Text>
+
+                {/* Permission 1: Accessibility */}
+                <View style={styles.permissionRow}>
+                  <View style={styles.permissionInfo}>
+                    <Ionicons 
+                      name={hasAccessibility ? "checkmark-circle" : "close-circle"} 
+                      size={24} 
+                      color={hasAccessibility ? "#00FFB8" : "#FF6B6B"} 
+                    />
+                    <View style={styles.permissionTextWrap}>
+                      <Text style={styles.permissionLabel}>Accessibility</Text>
+                      <Text style={styles.permissionDesc}>Detects when you open apps</Text>
+                    </View>
+                  </View>
+                  {!hasAccessibility && (
+                    <TouchableOpacity
+                      style={styles.permissionButton}
+                      onPress={() => appInterceptionService.requestPermissions()}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.permissionButtonText}>Enable</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Permission 2: Display over other apps */}
+                <View style={styles.permissionRow}>
+                  <View style={styles.permissionInfo}>
+                    <Ionicons 
+                      name={hasOverlay ? "checkmark-circle" : "close-circle"} 
+                      size={24} 
+                      color={hasOverlay ? "#00FFB8" : "#FF6B6B"} 
+                    />
+                    <View style={styles.permissionTextWrap}>
+                      <Text style={styles.permissionLabel}>Display over other apps</Text>
+                      <Text style={styles.permissionDesc}>Shows breathing overlay on top</Text>
+                    </View>
+                  </View>
+                  {!hasOverlay && (
+                    <TouchableOpacity
+                      style={styles.permissionButton}
+                      onPress={() => appInterceptionService.requestOverlayPermission()}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.permissionButtonText}>Enable</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
                 <TouchableOpacity
                   style={styles.refreshAccessButton}
                   onPress={async () => {
-                    const has = await appInterceptionService.hasPermissions();
-                    setHasAccessibility(has);
+                    await checkPermissions();
                     await loadApps();
                   }}
                   activeOpacity={0.8}
                 >
                   <Ionicons name="refresh" size={18} color="#00FFB8" style={styles.refreshAccessButtonIcon} />
-                  <Text style={styles.refreshAccessButtonText}>I've enabled it — refresh</Text>
+                  <Text style={styles.refreshAccessButtonText}>I've enabled them — refresh</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity style={styles.cancelButtonStandalone} onPress={onClose}>
@@ -508,22 +557,45 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 16,
   },
-  needAccessButton: {
-    backgroundColor: '#00FFB8',
-    paddingVertical: 14,
-    borderRadius: 12,
+  permissionRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    borderRadius: 12,
+    padding: 14,
     marginBottom: 12,
   },
-  needAccessButtonText: {
-    color: '#000',
-    fontSize: 16,
-    fontWeight: '600',
+  permissionInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
-  needAccessSteps: {
+  permissionTextWrap: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  permissionLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  permissionDesc: {
     fontSize: 13,
     color: 'rgba(255, 255, 255, 0.6)',
-    lineHeight: 20,
+    marginTop: 2,
+  },
+  permissionButton: {
+    backgroundColor: '#00FFB8',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginLeft: 12,
+  },
+  permissionButtonText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '600',
   },
   refreshAccessButton: {
     flexDirection: 'row',

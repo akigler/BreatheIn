@@ -80,13 +80,6 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.topButtonsContainer}>
-          <TouchableOpacity
-            style={styles.quickActionButton}
-            onPress={() => router.push('/friends')}
-          >
-            <Text style={styles.quickActionText}>Breathe with Friends</Text>
-          </TouchableOpacity>
-          
           <View style={styles.quickActions}>
             <BreatheSettingsButton />
           </View>
@@ -151,25 +144,6 @@ const styles = StyleSheet.create({
   quickActions: {
     marginTop: 0,
     gap: 12,
-  },
-  quickActionButton: {
-    backgroundColor: 'rgba(0, 212, 255, 0.1)',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 999,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: 'rgba(0, 255, 184, 0.2)',
-    shadowColor: '#00D4FF',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  quickActionText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
   },
   soundBowlContainer: {
     alignItems: 'center',

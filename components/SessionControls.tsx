@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Alert, ScrollView, Dimensions, Animated, PanResponder } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, Dimensions, Animated, PanResponder } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSessionStore } from '../store/sessionStore';
 import { SESSION_DURATIONS, formatDuration, secondsToMinutes } from '../utils/constants';
@@ -124,63 +124,37 @@ export const SessionControls: React.FC<SessionControlsProps> = ({
     modalTranslateY.setValue(0);
   };
 
-  const handleStop = () => {
-    Alert.alert(
-      'Stop Session?',
-      'Are you sure you want to break your streak?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Stop',
-          style: 'destructive',
-          onPress: onStopSession,
-        },
-      ]
-    );
-  };
-
   return (
     <View style={styles.container}>
-      {!isActive ? (
-        <>
-          {/* Duration Button - styled like App + button */}
-          <TouchableOpacity
-            style={styles.durationButtonContainer}
-            onPress={handleDurationButtonClick}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['rgba(0, 50, 60, 0.95)', 'rgba(60, 30, 20, 0.95)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.durationButton}
-            >
-              <Text style={styles.durationButtonText}>
-                - {formatDuration(selectedDuration)} +
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-          
-          {/* Start Breathing Button */}
-          <TouchableOpacity style={styles.startButton} onPress={handleStart}>
-            <LinearGradient
-              colors={['#C8F0BF', '#BFECF0']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.gradientButton}
-            >
-              <Text style={styles.startButtonText}>Start Breathing</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </>
-      ) : (
-        <TouchableOpacity style={styles.stopButton} onPress={handleStop}>
-          <Text style={styles.stopButtonText}>Stop Session</Text>
-        </TouchableOpacity>
-      )}
+      {/* Duration Button - styled like App + button */}
+      <TouchableOpacity
+        style={styles.durationButtonContainer}
+        onPress={handleDurationButtonClick}
+        activeOpacity={0.7}
+      >
+        <LinearGradient
+          colors={['rgba(0, 50, 60, 0.95)', 'rgba(60, 30, 20, 0.95)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.durationButton}
+        >
+          <Text style={styles.durationButtonText}>
+            - {formatDuration(selectedDuration)} +
+          </Text>
+        </LinearGradient>
+      </TouchableOpacity>
+      
+      {/* Start Breathing Button */}
+      <TouchableOpacity style={styles.startButton} onPress={handleStart}>
+        <LinearGradient
+          colors={['#C8F0BF', '#BFECF0']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.gradientButton}
+        >
+          <Text style={styles.startButtonText}>Start Breathing</Text>
+        </LinearGradient>
+      </TouchableOpacity>
 
       <Modal
         visible={showDurationPicker}
@@ -320,21 +294,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.5,
-  },
-  stopButton: {
-    width: '100%',
-    backgroundColor: 'rgba(255, 59, 48, 0.7)',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 59, 48, 0.3)',
-  },
-  stopButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
