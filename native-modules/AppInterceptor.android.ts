@@ -2,8 +2,8 @@
  * Android App Interceptor Implementation
  *
  * Uses the BreatheInAccessibility native module (added by the config plugin) when
- * available. The Accessibility Service detects when the user opens a monitored app
- * and launches Breathe In via breathein://overlay?app_id=... so the overlay shows on top.
+ * available. The overlay now uses SYSTEM_ALERT_WINDOW to draw a TRUE overlay on top
+ * of other apps - no app switching needed.
  *
  * We look up NativeModules at call time (lazy) so the module is found even if the
  * bridge wasn't ready at first load (e.g. with New Architecture).
@@ -52,8 +52,7 @@ export const AppInterceptorAndroid: AppInterceptorModule = {
   },
 
   onAppLaunch: (_callback: (appId: string) => void) => {
-    // On Android we don't need a callback: the Accessibility Service launches the app
-    // via breathein://overlay, and the app shows the overlay when it opens (see _layout deep link handling)
+    // With true overlay, we don't need this callback - the native overlay handles everything
   },
 
   getInstalledApps: async (): Promise<AppInfo[]> => {
@@ -68,16 +67,39 @@ export const AppInterceptorAndroid: AppInterceptorModule = {
     }));
   },
 
+  // Combined permission check (accessibility + overlay)
   hasPermissions: async (): Promise<boolean> => {
     const mod = getNativeModule();
     if (!mod) return false;
     return mod.hasPermissions();
   },
 
+  // Individual permission checks
+  hasAccessibilityPermission: async (): Promise<boolean> => {
+    const mod = getNativeModule();
+    if (!mod) return false;
+    return mod.hasAccessibilityPermission();
+  },
+
+  hasOverlayPermission: async (): Promise<boolean> => {
+    const mod = getNativeModule();
+    if (!mod) return false;
+    return mod.hasOverlayPermission();
+  },
+
+  // Request accessibility settings
   requestPermissions: async (): Promise<boolean> => {
     const mod = getNativeModule();
     if (!mod) return false;
     await mod.requestPermissions();
+    return true;
+  },
+
+  // Request overlay permission (Display over other apps)
+  requestOverlayPermission: async (): Promise<boolean> => {
+    const mod = getNativeModule();
+    if (!mod) return false;
+    await mod.requestOverlayPermission();
     return true;
   },
 
@@ -91,6 +113,14 @@ export const AppInterceptorAndroid: AppInterceptorModule = {
     const mod = getNativeModule();
     if (!mod || typeof mod.launchApp !== 'function') return false;
     await mod.launchApp(packageId);
+    return true;
+  },
+
+  // Dismiss the native overlay (if showing)
+  dismissOverlay: async (): Promise<boolean> => {
+    const mod = getNativeModule();
+    if (!mod || typeof mod.dismissOverlay !== 'function') return false;
+    await mod.dismissOverlay();
     return true;
   },
 };

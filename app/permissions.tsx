@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,9 @@ import {
   ScrollView,
   Platform,
   Linking,
+  AppState,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { appInterceptionService } from '../services/appInterceptionService';
 import * as Contacts from 'expo-contacts';
@@ -16,25 +17,51 @@ import * as Contacts from 'expo-contacts';
 /**
  * In-app "App permissions" style screen – same look as the system screen.
  * Tapping a row opens the relevant system settings.
+ * 
+ * For the true overlay to work, we need BOTH:
+ * 1. Accessibility permission (to detect app launches)
+ * 2. Overlay permission (to draw on top of other apps)
  */
 export default function PermissionsScreen() {
   const router = useRouter();
   const [contactsAllowed, setContactsAllowed] = useState<boolean | null>(null);
   const [accessibilityEnabled, setAccessibilityEnabled] = useState<boolean | null>(null);
+  const [overlayEnabled, setOverlayEnabled] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    Contacts.getPermissionsAsync().then(({ status }) =>
-      setContactsAllowed(status === 'granted')
-    );
+  const checkPermissions = useCallback(async () => {
+    const { status } = await Contacts.getPermissionsAsync();
+    setContactsAllowed(status === 'granted');
+    
     if (Platform.OS === 'android') {
-      appInterceptionService.hasPermissions().then(setAccessibilityEnabled);
-    } else {
-      setAccessibilityEnabled(null);
+      const [acc, overlay] = await Promise.all([
+        appInterceptionService.hasAccessibilityPermission(),
+        appInterceptionService.hasOverlayPermission(),
+      ]);
+      setAccessibilityEnabled(acc);
+      setOverlayEnabled(overlay);
     }
   }, []);
 
+  // Check on mount
+  useEffect(() => {
+    checkPermissions();
+  }, [checkPermissions]);
+
+  // Re-check when screen is focused (user returns from settings)
+  useFocusEffect(
+    useCallback(() => {
+      checkPermissions();
+      // Also listen for app state changes
+      const sub = AppState.addEventListener('change', (state) => {
+        if (state === 'active') checkPermissions();
+      });
+      return () => sub.remove();
+    }, [checkPermissions])
+  );
+
   const openAppPermissions = () => Linking.openSettings();
   const openAccessibility = () => appInterceptionService.requestPermissions();
+  const openOverlay = () => appInterceptionService.requestOverlayPermission();
 
   return (
     <View style={styles.container}>
@@ -89,14 +116,18 @@ export default function PermissionsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Accessibility – required for "breathe before apps" */}
+        {/* Accessibility + Overlay – required for "breathe before apps" */}
         {Platform.OS === 'android' && (
           <>
             <Text style={styles.sectionLabel}>Required for breathing before apps</Text>
             <View style={styles.sectionCard}>
+              {/* Accessibility permission */}
               <TouchableOpacity style={styles.row} onPress={openAccessibility} activeOpacity={0.7}>
                 <Ionicons name="accessibility" size={24} color="#1a1a1a" style={styles.rowIcon} />
-                <Text style={styles.rowLabel}>Accessibility</Text>
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Accessibility</Text>
+                  <Text style={styles.rowSubtitle}>Detects when you open apps</Text>
+                </View>
                 {accessibilityEnabled !== null && (
                   <Text style={[styles.rowStatus, !accessibilityEnabled && styles.rowStatusMuted]}>
                     {accessibilityEnabled ? 'On' : 'Off'}
@@ -104,10 +135,32 @@ export default function PermissionsScreen() {
                 )}
                 <Ionicons name="chevron-forward" size={20} color="#999" />
               </TouchableOpacity>
+              <View style={styles.rowDivider} />
+              {/* Overlay permission */}
+              <TouchableOpacity style={styles.row} onPress={openOverlay} activeOpacity={0.7}>
+                <Ionicons name="layers" size={24} color="#1a1a1a" style={styles.rowIcon} />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Display over other apps</Text>
+                  <Text style={styles.rowSubtitle}>Shows breathing overlay on top</Text>
+                </View>
+                {overlayEnabled !== null && (
+                  <Text style={[styles.rowStatus, !overlayEnabled && styles.rowStatusMuted]}>
+                    {overlayEnabled ? 'On' : 'Off'}
+                  </Text>
+                )}
+                <Ionicons name="chevron-forward" size={20} color="#999" />
+              </TouchableOpacity>
             </View>
             <Text style={styles.hint}>
-              Turn on Accessibility so Breathe In can show a breathing moment when you open selected apps.
+              Both permissions are required. Accessibility detects when you open selected apps, 
+              and "Display over other apps" lets us show the breathing overlay on top.
             </Text>
+            {accessibilityEnabled && overlayEnabled && (
+              <View style={styles.successBanner}>
+                <Ionicons name="checkmark-circle" size={20} color="#0a7c4a" />
+                <Text style={styles.successText}>All set! Breathing overlay is ready.</Text>
+              </View>
+            )}
           </>
         )}
 
@@ -200,11 +253,18 @@ const styles = StyleSheet.create({
   rowIcon: {
     marginRight: 16,
   },
-  rowLabel: {
+  rowContent: {
     flex: 1,
+  },
+  rowLabel: {
     fontSize: 16,
     color: '#1a1a1a',
     fontWeight: '500',
+  },
+  rowSubtitle: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 2,
   },
   rowStatus: {
     fontSize: 14,
@@ -223,9 +283,24 @@ const styles = StyleSheet.create({
   hint: {
     fontSize: 13,
     color: '#666',
-    marginBottom: 24,
+    marginBottom: 16,
     marginHorizontal: 4,
     lineHeight: 18,
+  },
+  successBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(10, 124, 74, 0.1)',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 24,
+  },
+  successText: {
+    fontSize: 14,
+    color: '#0a7c4a',
+    fontWeight: '500',
+    marginLeft: 8,
   },
   openSystemButton: {
     backgroundColor: '#1a1a1a',

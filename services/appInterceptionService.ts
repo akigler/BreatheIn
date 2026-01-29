@@ -47,11 +47,19 @@ function getAndroidDirectModule(): any {
       }));
     },
     hasPermissions: () => (typeof mod.hasPermissions === 'function' ? mod.hasPermissions() : Promise.resolve(false)),
+    hasAccessibilityPermission: () => (typeof mod.hasAccessibilityPermission === 'function' ? mod.hasAccessibilityPermission() : Promise.resolve(false)),
+    hasOverlayPermission: () => (typeof mod.hasOverlayPermission === 'function' ? mod.hasOverlayPermission() : Promise.resolve(false)),
     requestPermissions: () => (typeof mod.requestPermissions === 'function' ? mod.requestPermissions() : Promise.resolve(false)),
+    requestOverlayPermission: () => (typeof mod.requestOverlayPermission === 'function' ? mod.requestOverlayPermission() : Promise.resolve(false)),
     setMonitoredPackages: (ids: string[]) => { if (typeof mod.setMonitoredPackages === 'function') mod.setMonitoredPackages(ids); },
     launchApp: async (packageId: string): Promise<boolean> => {
       if (typeof mod.launchApp !== 'function') return false;
       await mod.launchApp(packageId);
+      return true;
+    },
+    dismissOverlay: async (): Promise<boolean> => {
+      if (typeof mod.dismissOverlay !== 'function') return false;
+      await mod.dismissOverlay();
       return true;
     },
   };
@@ -91,6 +99,8 @@ class AppInterceptionService {
   private appLaunchCallback: ((appId: string) => void) | null = null;
   private currentOverlayApp: AppInfo | null = null;
   private overlayVisible = false;
+  /** True when we've just launched another app; prevents navigation from bringing Breathe In back to foreground */
+  private launchedAnotherApp = false;
 
   /**
    * Initialize the app interception service
@@ -457,6 +467,46 @@ class AppInterceptionService {
     return false;
   }
 
+  /**
+   * Check if accessibility permission is granted (Android)
+   */
+  async hasAccessibilityPermission(): Promise<boolean> {
+    const mod = getEffectiveModule();
+    if (mod && typeof mod.hasAccessibilityPermission === 'function') {
+      return await mod.hasAccessibilityPermission();
+    }
+    return false;
+  }
+
+  /**
+   * Check if overlay permission (SYSTEM_ALERT_WINDOW) is granted (Android)
+   */
+  async hasOverlayPermission(): Promise<boolean> {
+    const mod = getEffectiveModule();
+    if (mod && typeof mod.hasOverlayPermission === 'function') {
+      return await mod.hasOverlayPermission();
+    }
+    return false;
+  }
+
+  /**
+   * Request overlay permission (Display over other apps) on Android
+   */
+  async requestOverlayPermission(): Promise<boolean> {
+    if (Platform.OS === 'android') {
+      try {
+        const nativeModule = getEffectiveModule();
+        if (nativeModule && typeof nativeModule.requestOverlayPermission === 'function') {
+          await nativeModule.requestOverlayPermission();
+          return true;
+        }
+      } catch (error) {
+        console.warn('Could not open overlay permission settings:', error);
+      }
+    }
+    return false;
+  }
+
   // Callbacks for overlay management
   private onShowOverlayCallback: ((appInfo: AppInfo) => void) | null = null;
   private onHideOverlayCallback: (() => void) | null = null;
@@ -492,12 +542,40 @@ class AppInterceptionService {
     const mod = getEffectiveModule();
     if (mod && typeof mod.launchApp === 'function') {
       try {
-        return await mod.launchApp(packageId);
-      } catch (_) {
-        return false;
+        const ok = await mod.launchApp(packageId);
+        if (__DEV__) console.warn('[Breathe In] launchAppToForeground native:', ok ? 'ok' : 'false');
+        if (ok) {
+          this.launchedAnotherApp = true;
+          return true;
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[Breathe In] launchAppToForeground native error:', e);
       }
     }
+    // Fallback: try Android intent URL so the other app opens (e.g. if native module not rebuilt)
+    if (Platform.OS === 'android') {
+      try {
+        const intentUrl = `intent:#Intent;package=${packageId};action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end`;
+        await Linking.openURL(intentUrl);
+        if (__DEV__) console.warn('[Breathe In] launchAppToForeground intent fallback: opened');
+        this.launchedAnotherApp = true;
+        return true;
+      } catch (e) {
+        if (__DEV__) console.warn('[Breathe In] launchAppToForeground intent fallback error:', e);
+      }
+    }
+    if (__DEV__) console.warn('[Breathe In] launchAppToForeground failed for package:', packageId);
     return false;
+  }
+
+  /**
+   * Check if we just launched another app (to prevent navigation from bringing Breathe In back).
+   * Clears the flag after checking so subsequent checks return false.
+   */
+  didLaunchAnotherApp(): boolean {
+    const val = this.launchedAnotherApp;
+    this.launchedAnotherApp = false;
+    return val;
   }
 }
 

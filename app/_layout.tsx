@@ -73,7 +73,11 @@ export default function RootLayout() {
           setOverlayApp(null);
         });
 
-        // Handle overlay deep link when app is opened by Accessibility Service (Android)
+        // NOTE: With the TRUE OVERLAY approach (SYSTEM_ALERT_WINDOW on Android),
+        // the native BreatheInOverlayService shows the breathing UI directly on top
+        // of the blocked app. The app is NOT launched via deep link anymore.
+        // This deep link handler is kept as a fallback for iOS or if overlay permission
+        // is not granted (then the accessibility service might fall back to deep links).
         const handleOverlayUrl = (url: string | null) => {
           if (!url || !url.startsWith('breathein://overlay')) return;
           try {
@@ -119,7 +123,12 @@ export default function RootLayout() {
     const packageId = appInfo?.id ?? null;
     await appInterceptionService.handleOverlayComplete();
     if (packageId) {
-      await appInterceptionService.launchAppToForeground(packageId);
+      const launched = await appInterceptionService.launchAppToForeground(packageId);
+      if (launched) {
+        // Don't navigate — let the launched app stay in foreground
+        // Navigation will happen when user returns to Breathe In (see overlay.tsx)
+        return;
+      }
     }
     router.replace('/');
   };
@@ -129,7 +138,12 @@ export default function RootLayout() {
     const packageId = appInfo?.id ?? null;
     appInterceptionService.hideOverlay();
     if (packageId) {
-      await appInterceptionService.launchAppToForeground(packageId);
+      const launched = await appInterceptionService.launchAppToForeground(packageId);
+      if (launched) {
+        // Don't navigate — let the launched app stay in foreground
+        // Navigation will happen when user returns to Breathe In (see overlay.tsx)
+        return;
+      }
     }
     router.replace('/');
   };
